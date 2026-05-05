@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "402671773333",
+    "project_id": "the-flow-54106",
+    "storage_bucket": "the-flow-54106.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:402671773333:android:824d80430666057dc51d9c",
+        "android_client_info": {
+          "package_name": "com.ana.theflow"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDzNlO402wmMOYw8HHt0ohOPrS47JyKg7w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
