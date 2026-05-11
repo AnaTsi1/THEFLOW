@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/search_LBL_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Smart Search"
+            android:textColor="@color/text_primary"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/search_LBL_resultSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_card_highlight"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <EditText android:id="@+id/search_EDT_style" android:layout_width="match_parent" android:layout_height="54dp" android:background="@drawable/bg_input" android:hint="Style: Hip Hop, Heels, Salsa..." android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
+            <EditText android:id="@+id/search_EDT_level" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Level" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
+            <EditText android:id="@+id/search_EDT_location" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Location" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
+            <EditText android:id="@+id/search_EDT_teacher" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Teacher" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
+            <EditText android:id="@+id/search_EDT_studio" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Studio" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
+            <EditText android:id="@+id/search_EDT_time" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Time / date" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
+
+            <Button
+                android:id="@+id/search_BTN_manual"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_button_primary"
+                android:text="Apply Filters"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/search_BTN_recommended"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_button_secondary"
+                android:text="Use Smart Recommendation"
+                android:textColor="@color/text_primary" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/search_LAY_results"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="vertical" />
+
+    </LinearLayout>
+</ScrollView>

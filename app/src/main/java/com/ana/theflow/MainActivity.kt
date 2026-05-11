@@ -1,345 +1,108 @@
 package com.ana.theflow
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.ana.theflow.ui.theme.THEFLOWTheme
+import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
+import com.ana.theflow.databinding.ActivityMainBinding
+import com.ana.theflow.prototype.PrototypeItem
+import com.ana.theflow.ui.detail.DetailFragment
+import com.ana.theflow.ui.discover.DiscoverFragment
+import com.ana.theflow.ui.home.HomeFragment
+import com.ana.theflow.ui.onboarding.OnboardingFragment
+import com.ana.theflow.ui.profile.ProfileFragment
+import com.ana.theflow.ui.search.SearchFragment
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
-        setContent {
-            THEFLOWTheme {
-                val navController = rememberNavController()
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    NavHost(
-                        navController = navController,
-                        startDestination = "home",
-                        modifier = Modifier.padding(innerPadding)
-                    ) {
-                        composable("home") {
-                            HomeScreen(
-                                onSearchClick = { navController.navigate("search") },
-                                onLoginClick = { navController.navigate("login") },
-                                onAddStudioClick = { navController.navigate("createStudio") }
-                            )
-                        }
+        setupBottomNavigation()
 
-                        composable("search") {
-                            SearchStudiosScreen(
-                                onBackClick = { navController.popBackStack() }
-                            )
-                        }
-
-                        composable("login") {
-                            LoginScreen(
-                                onBackClick = { navController.popBackStack() }
-                            )
-                        }
-
-                        composable("createStudio") {
-                            CreateStudioScreen(
-                                onBackClick = { navController.popBackStack() }
-                            )
-                        }
-                    }
-                }
-            }
+        if (savedInstanceState == null) {
+            binding.mainLAYBottomNav.visibility = android.view.View.GONE
+            openFragment(OnboardingFragment())
         }
     }
-}
 
-@Composable
-fun HomeScreen(
-    onSearchClick: () -> Unit,
-    onLoginClick: () -> Unit,
-    onAddStudioClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "THE FLOW",
-            fontSize = 36.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Button(
-            onClick = onSearchClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("חיפוש סטודיואים")
+    private fun setupBottomNavigation() {
+        binding.mainNavHome.setOnClickListener {
+            openFragment(HomeFragment())
+            markSelectedTab(AppTab.HOME)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Button(
-            onClick = onLoginClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("התחברות")
+        binding.mainNavDiscover.setOnClickListener {
+            openFragment(DiscoverFragment())
+            markSelectedTab(AppTab.DISCOVER)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        binding.mainNavSearch.setOnClickListener {
+            openFragment(SearchFragment())
+            markSelectedTab(AppTab.SEARCH)
+        }
 
-        Button(
-            onClick = onAddStudioClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("הוספת סטודיו")
+        binding.mainNavProfile.setOnClickListener {
+            openFragment(ProfileFragment())
+            markSelectedTab(AppTab.PROFILE)
         }
     }
-}
 
-@Composable
-fun SearchStudiosScreen(
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var location by remember { mutableStateOf("") }
-    var danceStyle by remember { mutableStateOf("") }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "חיפוש סטודיואים",
-            fontSize = 28.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = location,
-            onValueChange = { location = it },
-            label = { Text("עיר / אזור") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = danceStyle,
-            onValueChange = { danceStyle = it },
-            label = { Text("סגנון ריקוד") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(
-            onClick = {
-                // בהמשך נחבר כאן חיפוש מול Firebase Firestore
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("חפש")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onBackClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("חזרה")
-        }
+    fun completeOnboarding() {
+        binding.mainLAYBottomNav.visibility = android.view.View.VISIBLE
+        openFragment(DiscoverFragment())
+        markSelectedTab(AppTab.DISCOVER)
     }
-}
 
-@Composable
-fun LoginScreen(
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "התחברות",
-            fontSize = 28.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("אימייל") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("סיסמה") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(
-            onClick = {
-                // בהמשך נחבר כאן Firebase Authentication
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("התחברי")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onBackClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("חזרה")
-        }
+    fun openHome() {
+        binding.mainLAYBottomNav.visibility = android.view.View.VISIBLE
+        openFragment(HomeFragment())
+        markSelectedTab(AppTab.HOME)
     }
-}
 
-@Composable
-fun CreateStudioScreen(
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var studioName by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var danceStyles by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "הוספת סטודיו",
-            fontSize = 28.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = studioName,
-            onValueChange = { studioName = it },
-            label = { Text("שם הסטודיו") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = address,
-            onValueChange = { address = it },
-            label = { Text("כתובת") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = danceStyles,
-            onValueChange = { danceStyles = it },
-            label = { Text("סגנונות ריקוד") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = phone,
-            onValueChange = { phone = it },
-            label = { Text("טלפון") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(
-            onClick = {
-                // בהמשך נשמור את הסטודיו ב-Firebase Firestore עם status = pending
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("שליחת סטודיו לאישור")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onBackClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("חזרה")
-        }
+    fun openSearch() {
+        binding.mainLAYBottomNav.visibility = android.view.View.VISIBLE
+        openFragment(SearchFragment())
+        markSelectedTab(AppTab.SEARCH)
     }
-}
 
-@Preview(showBackground = true)
-@Composable
-fun HomeScreenPreview() {
-    THEFLOWTheme {
-        HomeScreen(
-            onSearchClick = {},
-            onLoginClick = {},
-            onAddStudioClick = {}
-        )
+    fun openDetail(item: PrototypeItem) {
+        binding.mainLAYBottomNav.visibility = android.view.View.GONE
+        openFragment(DetailFragment.newInstance(item.id))
+    }
+
+    fun closeDetail() {
+        binding.mainLAYBottomNav.visibility = android.view.View.VISIBLE
+        openFragment(DiscoverFragment())
+        markSelectedTab(AppTab.DISCOVER)
+    }
+
+    private fun openFragment(fragment: Fragment) {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.main_fragment_container, fragment)
+            .commit()
+    }
+
+    private fun markSelectedTab(tab: AppTab) {
+        binding.mainNavHome.setTextColor(getTabColor(tab == AppTab.HOME))
+        binding.mainNavDiscover.setTextColor(getTabColor(tab == AppTab.DISCOVER))
+        binding.mainNavSearch.setTextColor(getTabColor(tab == AppTab.SEARCH))
+        binding.mainNavProfile.setTextColor(getTabColor(tab == AppTab.PROFILE))
+    }
+
+    private fun getTabColor(isSelected: Boolean): Int {
+        val colorRes = if (isSelected) R.color.neon_pink else R.color.text_muted
+        return getColor(colorRes)
+    }
+
+    enum class AppTab {
+        HOME,
+        DISCOVER,
+        SEARCH,
+        PROFILE
     }
 }

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Build Your Dance Profile"
+            android:textColor="@color/text_primary"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Choose your preferences. The prototype will use them to start recommendations."
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/bg_card_highlight"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Dance styles"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <CheckBox android:id="@+id/onboarding_CHK_hiphop" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Hip Hop" android:textColor="@color/text_secondary" android:checked="true" />
+            <CheckBox android:id="@+id/onboarding_CHK_heels" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Heels" android:textColor="@color/text_secondary" android:checked="true" />
+            <CheckBox android:id="@+id/onboarding_CHK_salsa" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Salsa" android:textColor="@color/text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_contemporary" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Contemporary" android:textColor="@color/text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_afro" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Afro" android:textColor="@color/text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_ballet" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Ballet" android:textColor="@color/text_secondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Level"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <RadioGroup
+                android:id="@+id/onboarding_RADIO_level"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <RadioButton android:id="@+id/onboarding_RDB_beginner" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Beginner" android:textColor="@color/text_secondary" />
+                <RadioButton android:id="@+id/onboarding_RDB_intermediate" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Intermediate" android:textColor="@color/text_secondary" android:checked="true" />
+                <RadioButton android:id="@+id/onboarding_RDB_advanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Advanced" android:textColor="@color/text_secondary" />
+            </RadioGroup>
+
+            <EditText
+                android:id="@+id/onboarding_EDT_location"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_input"
+                android:hint="Location"
+                android:text="Tel Aviv"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <Button
+                android:id="@+id/onboarding_BTN_continue"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/bg_button_primary"
+                android:text="Start Discovering"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
