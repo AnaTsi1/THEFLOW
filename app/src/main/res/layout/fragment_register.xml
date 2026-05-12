@@ -2,7 +2,6 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_app_gradient"
     android:fillViewport="true">
 
     <LinearLayout
@@ -108,7 +107,6 @@
                 android:background="@drawable/bg_button_secondary"
                 android:text="Back"
                 android:textColor="@color/text_secondary" />
-
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

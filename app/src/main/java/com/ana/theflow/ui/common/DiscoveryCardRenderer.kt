@@ -1,22 +1,21 @@
 package com.ana.theflow.ui.common
 
-import android.graphics.Color
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.ana.theflow.R
-import com.ana.theflow.prototype.PrototypeItem
-import com.ana.theflow.prototype.RecommendationEngine
+import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.data.repository.DiscoveryRepository
 
-object PrototypeCardRenderer {
+object DiscoveryCardRenderer {
 
     fun addItemCard(
         parent: LinearLayout,
-        item: PrototypeItem,
+        item: DiscoveryItem,
         explanation: String,
-        onOpen: (PrototypeItem) -> Unit,
-        onSave: (PrototypeItem) -> Unit
+        onOpen: (DiscoveryItem) -> Unit,
+        onSave: (DiscoveryItem) -> Unit
     ) {
         val context = parent.context
         val card = LinearLayout(context).apply {
@@ -33,20 +32,20 @@ object PrototypeCardRenderer {
 
         card.addView(TextView(context).apply {
             text = item.title
-            setTextColor(Color.WHITE)
+            setTextColor(context.getColor(R.color.text_primary))
             textSize = 19f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
 
         card.addView(TextView(context).apply {
-            text = "${item.studio} • ${item.teacher}"
+            text = "${item.studio} / ${item.teacher}"
             setTextColor(context.getColor(R.color.text_secondary))
             textSize = 14f
             setPadding(0, 6.dp(), 0, 0)
         })
 
         card.addView(TextView(context).apply {
-            text = "${item.style} • ${item.level} • ${item.location} • ${item.time}"
+            text = "${item.style} / ${item.level} / ${item.location} / ${item.time}"
             setTextColor(context.getColor(R.color.text_muted))
             textSize = 13f
             setPadding(0, 8.dp(), 0, 0)
@@ -62,7 +61,7 @@ object PrototypeCardRenderer {
         card.addView(TextView(context).apply {
             text = item.type.uppercase()
             gravity = android.view.Gravity.CENTER
-            setTextColor(Color.WHITE)
+            setTextColor(context.getColor(R.color.text_primary))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setBackgroundResource(R.drawable.bg_media_gradient)
             layoutParams = LinearLayout.LayoutParams(
@@ -85,15 +84,15 @@ object PrototypeCardRenderer {
 
         actions.addView(Button(context).apply {
             text = "Open"
-            setTextColor(Color.WHITE)
+            setTextColor(context.getColor(R.color.text_primary))
             setBackgroundResource(R.drawable.bg_button_primary)
             setOnClickListener { onOpen(item) }
             layoutParams = LinearLayout.LayoutParams(0, 48.dp(), 1f)
         })
 
         actions.addView(Button(context).apply {
-            text = if (RecommendationEngine.isSaved(item)) "Saved" else "Save"
-            setTextColor(Color.WHITE)
+            text = if (DiscoveryRepository.isSaved(item)) "Saved" else "Save"
+            setTextColor(context.getColor(R.color.text_primary))
             setBackgroundResource(R.drawable.bg_button_secondary)
             setOnClickListener {
                 onSave(item)

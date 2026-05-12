@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import com.ana.theflow.MainActivity
+import com.ana.theflow.R
 import com.ana.theflow.databinding.ActivityLoginBinding
 
 class LoginActivity : AppCompatActivity() {
@@ -20,42 +21,54 @@ class LoginActivity : AppCompatActivity() {
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        observeViewModel()
-        setupClickListeners()
-    }
+        if (savedInstanceState != null) {
+            return
+        }
 
-    private fun observeViewModel() {
-        authViewModel.uiState.observe(this) { state ->
-            binding.loginProgress.visibility = if (state.isLoading) View.VISIBLE else View.GONE
-            binding.loginBTNLogin.isEnabled = !state.isLoading
-            binding.loginBTNRegister.isEnabled = !state.isLoading
-
-            binding.loginLBLMessage.text = state.errorMessage.orEmpty()
-            binding.loginLBLMessage.visibility =
-                if (state.errorMessage.isNullOrBlank()) View.GONE else View.VISIBLE
+        if (authViewModel.getCurrentUserUid() == null) {
+            showLogin()
+        } else {
+            routeSignedInUser()
         }
     }
 
-    private fun setupClickListeners() {
-        binding.loginBTNLogin.setOnClickListener {
-            loginUser()
-        }
-
-        binding.loginBTNRegister.setOnClickListener {
-            startActivity(Intent(this, RegisterChoiceActivity::class.java))
-        }
-
+    fun showLogin() {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.auth_fragment_container, LoginFragment())
+            .commit()
     }
 
-    private fun loginUser() {
-        authViewModel.login(
-            email = binding.loginEDTEmail.text.toString().trim(),
-            password = binding.loginEDTPassword.text.toString(),
-            onSuccess = {
-                Toast.makeText(this, "Signed in successfully", Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this, MainActivity::class.java))
-                finish()
+    fun showRegister() {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.auth_fragment_container, RegisterFragment())
+            .addToBackStack(null)
+            .commit()
+    }
+
+    fun routeSignedInUser() {
+        binding.authFragmentContainer.visibility = View.GONE
+        authViewModel.loadCurrentUser(
+            onSuccess = { user ->
+                val destination = if (user.onboardingCompleted) {
+                    MainActivity.START_DESTINATION_HOME
+                } else {
+                    MainActivity.START_DESTINATION_ONBOARDING
+                }
+                openMainApp(destination)
+            },
+            onFailure = { error ->
+                Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+                binding.authFragmentContainer.visibility = View.VISIBLE
+                showLogin()
             }
         )
+    }
+
+    fun openMainApp(startDestination: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_START_DESTINATION, startDestination)
+        }
+        startActivity(intent)
+        finish()
     }
 }

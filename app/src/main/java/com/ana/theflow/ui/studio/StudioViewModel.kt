@@ -22,12 +22,12 @@ class StudioViewModel : ViewModel() {
         )
     }
 
-    fun createStudioRequest(
+    fun createStudioPage(
         studio: Studio,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
-        studioRepository.createStudioRequest(
+        studioRepository.createStudioPage(
             studio = studio,
             onSuccess = onSuccess,
             onFailure = onFailure

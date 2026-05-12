@@ -6,10 +6,10 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
+import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.databinding.FragmentDiscoverBinding
-import com.ana.theflow.prototype.PrototypeItem
-import com.ana.theflow.prototype.RecommendationEngine
-import com.ana.theflow.ui.common.PrototypeCardRenderer
+import com.ana.theflow.ui.common.DiscoveryCardRenderer
 
 class DiscoverFragment : Fragment() {
 
@@ -23,7 +23,7 @@ class DiscoverFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.discoverEDTSearch.setOnEditorActionListener { textView, _, _ ->
-            RecommendationEngine.trackSearch(textView.text.toString(), "")
+            DiscoveryRepository.trackSearch(textView.text.toString(), "")
             render()
             false
         }
@@ -31,27 +31,27 @@ class DiscoverFragment : Fragment() {
     }
 
     private fun render() {
-        binding.discoverLBLExplanation.text = RecommendationEngine.behaviorSummary()
+        binding.discoverLBLExplanation.text = DiscoveryRepository.behaviorSummary()
         binding.discoverLAYRecommended.removeAllViews()
         binding.discoverLAYPopular.removeAllViews()
 
-        RecommendationEngine.recommendedItems().take(4).forEach { item ->
+        DiscoveryRepository.recommendedItems().take(4).forEach { item ->
             addCard(binding.discoverLAYRecommended, item)
         }
 
-        RecommendationEngine.popularNearYou().take(3).forEach { item ->
+        DiscoveryRepository.popularNearYou().take(3).forEach { item ->
             addCard(binding.discoverLAYPopular, item)
         }
     }
 
-    private fun addCard(parent: android.widget.LinearLayout, item: PrototypeItem) {
-        PrototypeCardRenderer.addItemCard(
+    private fun addCard(parent: android.widget.LinearLayout, item: DiscoveryItem) {
+        DiscoveryCardRenderer.addItemCard(
             parent = parent,
             item = item,
-            explanation = RecommendationEngine.explanationFor(item),
+            explanation = DiscoveryRepository.explanationFor(item),
             onOpen = { (requireActivity() as MainActivity).openDetail(it) },
             onSave = {
-                RecommendationEngine.trackSave(it)
+                DiscoveryRepository.trackSave(it)
                 render()
             }
         )

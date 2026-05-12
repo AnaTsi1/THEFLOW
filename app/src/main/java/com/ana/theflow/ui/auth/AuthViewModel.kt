@@ -43,7 +43,6 @@ class AuthViewModel : ViewModel() {
         lastName: String,
         email: String,
         password: String,
-        role: Constants.UserRole,
         onSuccess: () -> Unit
     ) {
         if (!validateRegister(firstName, lastName, email, password)) return
@@ -58,12 +57,40 @@ class AuthViewModel : ViewModel() {
                     firstName = firstName,
                     lastName = lastName,
                     email = email,
-                    role = role,
+                    role = Constants.UserRole.DANCER,
                     onSuccess = onSuccess
                 )
             },
             onFailure = { error ->
                 _uiState.value = AuthUiState(errorMessage = error)
+            }
+        )
+    }
+
+    fun getCurrentUserUid(): String? {
+        return authRepository.getCurrentUserUid()
+    }
+
+    fun loadCurrentUser(
+        onSuccess: (com.ana.theflow.data.model.user.User) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = authRepository.getCurrentUserUid()
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        _uiState.value = AuthUiState(isLoading = true)
+        userRepository.getUserByUid(
+            uid = uid,
+            onSuccess = { user ->
+                _uiState.value = AuthUiState()
+                onSuccess(user)
+            },
+            onFailure = { error ->
+                _uiState.value = AuthUiState(errorMessage = error)
+                onFailure(error)
             }
         )
     }

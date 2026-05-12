@@ -4,14 +4,22 @@ object Constants {
 
     object Collections {
         const val USERS = "users"
+        const val POSTS = "posts"
         const val STUDIOS = "studios"
-        const val STUDIO_REQUESTS = "studioRequests"
+        const val PROFESSIONAL_APPLICATIONS = "professionalApplications"
+        const val STUDIO_APPLICATIONS = "studioApplications"
+        const val USER_ACTIVITY_EVENTS = "userActivityEvents"
     }
 
-    enum class UserRole {
-        DANCER,
-        STUDIO_OWNER,
-        ADMIN
+    enum class UserRole(val firestoreValue: String) {
+        DANCER("dancer"),
+        ADMIN("admin")
+    }
+
+    enum class ProfessionalApplicationType(val firestoreValue: String) {
+        VERIFIED_TEACHER("verified_teacher"),
+        CHOREOGRAPHER("choreographer"),
+        STUDIO("studio")
     }
 
     enum class StudioStatus {

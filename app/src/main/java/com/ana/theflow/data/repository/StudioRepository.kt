@@ -8,12 +8,12 @@ class StudioRepository {
 
     private val db = FirebaseFirestore.getInstance()
 
-    fun createStudioRequest(
+    fun createStudioPage(
         studio: Studio,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
-        val docRef = db.collection(Constants.Collections.STUDIO_REQUESTS).document()
+        val docRef = db.collection(Constants.Collections.STUDIOS).document()
         val studioWithId = studio.copy(
             id = docRef.id,
             status = Constants.StudioStatus.PENDING.name
@@ -22,7 +22,7 @@ class StudioRepository {
         docRef.set(studioWithId)
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { error ->
-                onFailure(error.message ?: "Failed to save studio request")
+                onFailure(error.message ?: "Failed to save studio page")
             }
     }
 
@@ -33,7 +33,7 @@ class StudioRepository {
         onFailure: (String) -> Unit
     ) {
         var query = db.collection(Constants.Collections.STUDIOS)
-            .whereEqualTo("status", Constants.StudioStatus.APPROVED.name)
+            .whereEqualTo("verified", true)
 
         if (location.isNotBlank()) {
             query = query.whereEqualTo("city", location.trim())

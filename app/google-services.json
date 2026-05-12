@@ -12,7 +12,12 @@
           "package_name": "com.ana.theflow"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "402671773333-s680nvj6bp56d257ru9dldr1too27o74.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDzNlO402wmMOYw8HHt0ohOPrS47JyKg7w"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "402671773333-s680nvj6bp56d257ru9dldr1too27o74.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

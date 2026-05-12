@@ -1,14 +1,22 @@
-package com.ana.theflow.prototype
+package com.ana.theflow.data.repository
 
-object RecommendationEngine {
+import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.utilities.Constants
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
-    val allItems = listOf(
-        PrototypeItem("1", "Hip Hop Foundations", "Beat Room", "Noa Levi", "Hip Hop", "Beginner", "Tel Aviv", "Today 18:00", "Class"),
-        PrototypeItem("2", "Heels After Dark", "Studio Luna", "Maya Cohen", "Heels", "Intermediate", "Tel Aviv", "Today 20:30", "Class"),
-        PrototypeItem("3", "Salsa Social Night", "Latin House", "Carlos M.", "Salsa", "Beginner", "Ramat Gan", "Fri 21:00", "Event"),
-        PrototypeItem("4", "Contemporary Flow", "Move Hub", "Dana Shalev", "Contemporary", "Advanced", "Herzliya", "Wed 19:30", "Class"),
-        PrototypeItem("5", "Afro Fusion Lab", "Studio Luna", "Ari Ben", "Afro", "Intermediate", "Tel Aviv", "Thu 20:00", "Workshop"),
-        PrototypeItem("6", "Adult Ballet Basics", "North Stage", "Lior Dan", "Ballet", "Beginner", "Haifa", "Sun 17:00", "Class")
+object DiscoveryRepository {
+
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
+
+    val seedItems = listOf(
+        DiscoveryItem("1", "Hip Hop Foundations", "Beat Room", "Noa Levi", "Hip Hop", "Beginner", "Tel Aviv", "Today 18:00", "Class"),
+        DiscoveryItem("2", "Heels After Dark", "Studio Luna", "Maya Cohen", "Heels", "Intermediate", "Tel Aviv", "Today 20:30", "Class"),
+        DiscoveryItem("3", "Salsa Social Night", "Latin House", "Carlos M.", "Salsa", "Beginner", "Ramat Gan", "Fri 21:00", "Event"),
+        DiscoveryItem("4", "Contemporary Flow", "Move Hub", "Dana Shalev", "Contemporary", "Advanced", "Herzliya", "Wed 19:30", "Class"),
+        DiscoveryItem("5", "Afro Fusion Lab", "Studio Luna", "Ari Ben", "Afro", "Intermediate", "Tel Aviv", "Thu 20:00", "Workshop"),
+        DiscoveryItem("6", "Adult Ballet Basics", "North Stage", "Lior Dan", "Ballet", "Beginner", "Haifa", "Sun 17:00", "Class")
     )
 
     var preferredStyles: MutableSet<String> = mutableSetOf("Hip Hop", "Heels")
@@ -21,12 +29,12 @@ object RecommendationEngine {
     private val savedItemIds = mutableSetOf<String>()
     private var lastReason = "Based on your dance preferences"
 
-    fun savePreferences(styles: Set<String>, level: String, location: String) {
-        preferredStyles = styles.toMutableSet()
-        preferredLevel = level
-        preferredLocation = location
-        styles.forEach { styleScores[it] = (styleScores[it] ?: 0) + 3 }
-        lastReason = "Based on your onboarding preferences"
+    fun hydratePreferences(styles: List<String>, level: String, location: String) {
+        if (styles.isNotEmpty()) preferredStyles = styles.toMutableSet()
+        if (level.isNotBlank()) preferredLevel = level
+        if (location.isNotBlank()) preferredLocation = location
+        preferredStyles.forEach { styleScores[it] = (styleScores[it] ?: 0) + 3 }
+        lastReason = "Based on your dance profile"
     }
 
     fun trackSearch(style: String, location: String) {
@@ -40,32 +48,30 @@ object RecommendationEngine {
         }
     }
 
-    fun trackOpen(item: PrototypeItem) {
+    fun trackOpen(item: DiscoveryItem) {
         styleScores[item.style] = (styleScores[item.style] ?: 0) + 2
         studioScores[item.studio] = (studioScores[item.studio] ?: 0) + 2
         teacherScores[item.teacher] = (teacherScores[item.teacher] ?: 0) + 1
         lastReason = "Because you viewed ${item.style} classes"
     }
 
-    fun trackSave(item: PrototypeItem) {
+    fun trackSave(item: DiscoveryItem) {
         savedItemIds.add(item.id)
         styleScores[item.style] = (styleScores[item.style] ?: 0) + 4
         studioScores[item.studio] = (studioScores[item.studio] ?: 0) + 4
         lastReason = "Because you saved ${item.studio}"
     }
 
-    fun isSaved(item: PrototypeItem): Boolean = savedItemIds.contains(item.id)
+    fun isSaved(item: DiscoveryItem): Boolean = savedItemIds.contains(item.id)
 
-    fun recommendedItems(): List<PrototypeItem> {
-        return allItems.sortedByDescending { item ->
-            scoreFor(item)
-        }
+    fun recommendedItems(): List<DiscoveryItem> {
+        return seedItems.sortedByDescending { item -> scoreFor(item) }
     }
 
-    fun popularNearYou(): List<PrototypeItem> {
-        return allItems
+    fun popularNearYou(): List<DiscoveryItem> {
+        return seedItems
             .filter { it.location.equals(preferredLocation, ignoreCase = true) }
-            .ifEmpty { allItems.take(3) }
+            .ifEmpty { seedItems.take(3) }
     }
 
     fun search(
@@ -75,10 +81,10 @@ object RecommendationEngine {
         teacher: String,
         studio: String,
         time: String
-    ): List<PrototypeItem> {
+    ): List<DiscoveryItem> {
         trackSearch(style, location)
 
-        return allItems.filter { item ->
+        return seedItems.filter { item ->
             item.matches(style, item.style) &&
                 item.matches(level, item.level) &&
                 item.matches(location, item.location) &&
@@ -88,11 +94,11 @@ object RecommendationEngine {
         }
     }
 
-    fun itemById(id: String): PrototypeItem? {
-        return allItems.firstOrNull { it.id == id }
+    fun itemById(id: String): DiscoveryItem? {
+        return seedItems.firstOrNull { it.id == id }
     }
 
-    fun explanationFor(item: PrototypeItem): String {
+    fun explanationFor(item: DiscoveryItem): String {
         return when {
             (styleScores[item.style] ?: 0) > 0 -> "Because you viewed ${item.style} classes"
             (studioScores[item.studio] ?: 0) > 0 -> "Because you saved ${item.studio}"
@@ -107,8 +113,30 @@ object RecommendationEngine {
         return "Top style: $topStyle\nTop studio: $topStudio\nLocation: $preferredLocation"
     }
 
-    // Prototype scoring: simple local weights that simulate a smart recommendation engine.
-    private fun scoreFor(item: PrototypeItem): Int {
+    fun loadRecommendationProfile(
+        onSuccess: (Map<String, Any>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection("recommendationProfile")
+            .document("main")
+            .get()
+            .addOnSuccessListener { document ->
+                onSuccess(document.data.orEmpty())
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load recommendation profile")
+            }
+    }
+
+    private fun scoreFor(item: DiscoveryItem): Int {
         var score = 0
         if (preferredStyles.contains(item.style)) score += 4
         if (item.level == preferredLevel) score += 2
@@ -120,7 +148,7 @@ object RecommendationEngine {
         return score
     }
 
-    private fun PrototypeItem.matches(query: String, value: String): Boolean {
+    private fun DiscoveryItem.matches(query: String, value: String): Boolean {
         return query.isBlank() || value.contains(query, ignoreCase = true)
     }
 }

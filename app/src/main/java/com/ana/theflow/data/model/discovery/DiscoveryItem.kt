@@ -1,6 +1,6 @@
-package com.ana.theflow.prototype
+package com.ana.theflow.data.model.discovery
 
-data class PrototypeItem(
+data class DiscoveryItem(
     val id: String,
     val title: String,
     val studio: String,

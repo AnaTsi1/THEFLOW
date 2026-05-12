@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Choose your preferences. The prototype will use them to start recommendations."
+            android:text="Choose your preferences so THE FLOW can personalize your feed and discovery."
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
