@@ -9,5 +9,7 @@ data class DiscoveryItem(
     val level: String,
     val location: String,
     val time: String,
-    val type: String
+    val type: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

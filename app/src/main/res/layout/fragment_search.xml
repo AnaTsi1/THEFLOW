@@ -7,15 +7,237 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingBottom="18dp">
 
         <TextView
             android:id="@+id/search_LBL_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Smart Search"
+            android:text="Search"
             android:textColor="@color/text_primary"
             android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/search_EDT_query"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input"
+                android:hint="Studio or dancer"
+                android:inputType="text"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <Button
+                android:id="@+id/search_BTN_query"
+                android:layout_width="84dp"
+                android:layout_height="54dp"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/bg_button_primary"
+                android:text="Search"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/search_BTN_advancedToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:text="Advanced search"
+            android:textColor="@color/neon_pink"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/search_LAY_advanced"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card_highlight"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/search_EDT_style"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:background="@drawable/bg_input"
+                android:hint="Style: Hip Hop, Heels, Salsa..."
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_level"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Level"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_location"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Location"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_teacher"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Dancer / teacher"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_studio"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Studio"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_time"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Time / date"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <Button
+                android:id="@+id/search_BTN_manual"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_button_primary"
+                android:text="Apply filters"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:padding="2dp">
+
+            <androidx.fragment.app.FragmentContainerView
+                android:id="@+id/search_MAP_results"
+                android:name="com.google.android.gms.maps.SupportMapFragment"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <Button
+                android:id="@+id/search_BTN_mapFilter"
+                android:layout_width="wrap_content"
+                android:layout_height="42dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="12dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="Filter"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/search_LAY_mapFilters"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/search_EDT_mapStyle"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:background="@drawable/bg_input"
+                android:hint="Map style filter"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_mapLevel"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Map level filter"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/search_EDT_mapLocation"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Map location filter"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <Button
+                android:id="@+id/search_BTN_mapApply"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_button_primary"
+                android:text="Apply map filters"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/search_LBL_recommendationsTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Recommended search"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
         <TextView
@@ -25,42 +247,6 @@
             android:layout_marginTop="6dp"
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:background="@drawable/bg_card_highlight"
-            android:orientation="vertical"
-            android:padding="18dp">
-
-            <EditText android:id="@+id/search_EDT_style" android:layout_width="match_parent" android:layout_height="54dp" android:background="@drawable/bg_input" android:hint="Style: Hip Hop, Heels, Salsa..." android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
-            <EditText android:id="@+id/search_EDT_level" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Level" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
-            <EditText android:id="@+id/search_EDT_location" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Location" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
-            <EditText android:id="@+id/search_EDT_teacher" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Teacher" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
-            <EditText android:id="@+id/search_EDT_studio" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Studio" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
-            <EditText android:id="@+id/search_EDT_time" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:background="@drawable/bg_input" android:hint="Time / date" android:textColor="@color/text_primary" android:textColorHint="@color/text_muted" />
-
-            <Button
-                android:id="@+id/search_BTN_manual"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/bg_button_primary"
-                android:text="Apply Filters"
-                android:textColor="@color/text_primary"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/search_BTN_recommended"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_button_secondary"
-                android:text="Use Smart Recommendation"
-                android:textColor="@color/text_primary" />
-
-        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/search_LAY_results"

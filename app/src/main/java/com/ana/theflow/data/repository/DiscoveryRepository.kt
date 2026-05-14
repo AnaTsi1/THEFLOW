@@ -11,12 +11,12 @@ object DiscoveryRepository {
     private val db = FirebaseFirestore.getInstance()
 
     val seedItems = listOf(
-        DiscoveryItem("1", "Hip Hop Foundations", "Beat Room", "Noa Levi", "Hip Hop", "Beginner", "Tel Aviv", "Today 18:00", "Class"),
-        DiscoveryItem("2", "Heels After Dark", "Studio Luna", "Maya Cohen", "Heels", "Intermediate", "Tel Aviv", "Today 20:30", "Class"),
-        DiscoveryItem("3", "Salsa Social Night", "Latin House", "Carlos M.", "Salsa", "Beginner", "Ramat Gan", "Fri 21:00", "Event"),
-        DiscoveryItem("4", "Contemporary Flow", "Move Hub", "Dana Shalev", "Contemporary", "Advanced", "Herzliya", "Wed 19:30", "Class"),
-        DiscoveryItem("5", "Afro Fusion Lab", "Studio Luna", "Ari Ben", "Afro", "Intermediate", "Tel Aviv", "Thu 20:00", "Workshop"),
-        DiscoveryItem("6", "Adult Ballet Basics", "North Stage", "Lior Dan", "Ballet", "Beginner", "Haifa", "Sun 17:00", "Class")
+        DiscoveryItem("1", "Hip Hop Foundations", "Beat Room", "Noa Levi", "Hip Hop", "Beginner", "Tel Aviv", "Today 18:00", "Class", 32.0718, 34.7792),
+        DiscoveryItem("2", "Heels After Dark", "Studio Luna", "Maya Cohen", "Heels", "Intermediate", "Tel Aviv", "Today 20:30", "Class", 32.0645, 34.7710),
+        DiscoveryItem("3", "Salsa Social Night", "Latin House", "Carlos M.", "Salsa", "Beginner", "Ramat Gan", "Fri 21:00", "Event", 32.0837, 34.8142),
+        DiscoveryItem("4", "Contemporary Flow", "Move Hub", "Dana Shalev", "Contemporary", "Advanced", "Herzliya", "Wed 19:30", "Class", 32.1663, 34.8433),
+        DiscoveryItem("5", "Afro Fusion Lab", "Studio Luna", "Ari Ben", "Afro", "Intermediate", "Tel Aviv", "Thu 20:00", "Workshop", 32.0645, 34.7710),
+        DiscoveryItem("6", "Adult Ballet Basics", "North Stage", "Lior Dan", "Ballet", "Beginner", "Haifa", "Sun 17:00", "Class", 32.7940, 34.9896)
     )
 
     var preferredStyles: MutableSet<String> = mutableSetOf("Hip Hop", "Heels")
