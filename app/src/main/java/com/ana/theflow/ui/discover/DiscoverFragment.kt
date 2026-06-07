@@ -27,7 +27,19 @@ class DiscoverFragment : Fragment() {
             render()
             false
         }
+        binding.discoverLBLExplanation.text = "Loading studios..."
         render()
+        DiscoveryRepository.loadApprovedStudios(
+            onSuccess = {
+                if (_binding != null) render()
+            },
+            onFailure = { error ->
+                if (_binding != null) {
+                    binding.discoverLBLExplanation.text = error
+                    render()
+                }
+            }
+        )
     }
 
     private fun render() {

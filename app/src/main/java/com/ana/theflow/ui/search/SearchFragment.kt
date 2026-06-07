@@ -53,10 +53,17 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         binding.searchBTNMapApply.setOnClickListener {
             runMapFilter()
         }
-        renderResults(
-            items = DiscoveryRepository.recommendedItems(),
-            label = "Recommended from your dance profile",
-            title = "Recommended search"
+        renderRecommendedResults()
+        DiscoveryRepository.loadApprovedStudios(
+            onSuccess = {
+                if (_binding != null) renderRecommendedResults()
+            },
+            onFailure = { error ->
+                if (_binding != null) {
+                    binding.searchLBLResultSummary.text = error
+                    renderRecommendedResults()
+                }
+            }
         )
     }
 
@@ -103,7 +110,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
 
     private fun runSimpleSearch() {
         val query = binding.searchEDTQuery.text.toString()
-        val results = DiscoveryRepository.seedItems.filterByFreeText(query)
+        val results = DiscoveryRepository.recommendedItems().filterByFreeText(query)
 
         activityTrackingRepository.trackSearch(
             query = query,
@@ -115,6 +122,14 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             items = results,
             label = if (query.isBlank()) "Recommended from your dance profile" else "Search results",
             title = if (query.isBlank()) "Recommended search" else "Search results"
+        )
+    }
+
+    private fun renderRecommendedResults() {
+        renderResults(
+            items = DiscoveryRepository.recommendedItems(),
+            label = "Recommended from your dance profile",
+            title = "Recommended search"
         )
     }
 

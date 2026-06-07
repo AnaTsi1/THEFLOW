@@ -9,6 +9,7 @@ object DiscoveryRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private var firebaseItems: List<DiscoveryItem> = emptyList()
 
     val seedItems = listOf(
         DiscoveryItem("1", "Hip Hop Foundations", "Beat Room", "Noa Levi", "Hip Hop", "Beginner", "Tel Aviv", "Today 18:00", "Class", 32.0718, 34.7792),
@@ -65,13 +66,13 @@ object DiscoveryRepository {
     fun isSaved(item: DiscoveryItem): Boolean = savedItemIds.contains(item.id)
 
     fun recommendedItems(): List<DiscoveryItem> {
-        return seedItems.sortedByDescending { item -> scoreFor(item) }
+        return allItems().sortedByDescending { item -> scoreFor(item) }
     }
 
     fun popularNearYou(): List<DiscoveryItem> {
-        return seedItems
+        return allItems()
             .filter { it.location.equals(preferredLocation, ignoreCase = true) }
-            .ifEmpty { seedItems.take(3) }
+            .ifEmpty { allItems().take(3) }
     }
 
     fun search(
@@ -84,7 +85,7 @@ object DiscoveryRepository {
     ): List<DiscoveryItem> {
         trackSearch(style, location)
 
-        return seedItems.filter { item ->
+        return allItems().filter { item ->
             item.matches(style, item.style) &&
                 item.matches(level, item.level) &&
                 item.matches(location, item.location) &&
@@ -95,7 +96,54 @@ object DiscoveryRepository {
     }
 
     fun itemById(id: String): DiscoveryItem? {
-        return seedItems.firstOrNull { it.id == id }
+        return allItems().firstOrNull { it.id == id }
+    }
+
+    fun loadApprovedStudios(
+        onSuccess: (List<DiscoveryItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection(Constants.Collections.STUDIOS)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                firebaseItems = snapshot.documents.mapNotNull { document ->
+                    val status = document.getString("status").orEmpty()
+                    val verified = document.getBoolean("verified") == true
+                    val isApproved = status.equals(Constants.StudioStatus.APPROVED.name, ignoreCase = true)
+                    if (!verified && !isApproved) return@mapNotNull null
+
+                    val styles = (document.get("danceStyles") as? List<*>)
+                        ?.mapNotNull { it as? String }
+                        ?.filter { it.isNotBlank() }
+                        .orEmpty()
+                    val studioName = document.firstNonBlankString("displayName", "name")
+                    if (studioName.isBlank()) return@mapNotNull null
+
+                    val branchName = document.firstNonBlankString("branchName")
+                    val city = document.firstNonBlankString("city", "location")
+                    val title = listOf(studioName, branchName)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" - ")
+
+                    DiscoveryItem(
+                        id = document.id,
+                        title = title,
+                        studio = studioName,
+                        teacher = "Studio",
+                        style = styles.firstOrNull().orEmpty().ifBlank { "Dance" },
+                        level = "All levels",
+                        location = city,
+                        time = document.firstNonBlankString("openingHours", "time").ifBlank { "Contact studio" },
+                        type = "Studio",
+                        latitude = document.getDouble("latitude"),
+                        longitude = document.getDouble("longitude")
+                    )
+                }
+                onSuccess(firebaseItems)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load studios")
+            }
     }
 
     fun explanationFor(item: DiscoveryItem): String {
@@ -150,5 +198,17 @@ object DiscoveryRepository {
 
     private fun DiscoveryItem.matches(query: String, value: String): Boolean {
         return query.isBlank() || value.contains(query, ignoreCase = true)
+    }
+
+    private fun allItems(): List<DiscoveryItem> {
+        return firebaseItems.ifEmpty { seedItems }
+    }
+
+    private fun com.google.firebase.firestore.DocumentSnapshot.firstNonBlankString(
+        vararg fields: String
+    ): String {
+        return fields.firstNotNullOfOrNull { field ->
+            getString(field)?.takeIf { it.isNotBlank() }
+        }.orEmpty()
     }
 }
