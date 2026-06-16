@@ -19,6 +19,7 @@ class AuthViewModel : ViewModel() {
     fun login(
         email: String,
         password: String,
+        selectedRole: Constants.UserRole,
         onSuccess: () -> Unit
     ) {
         if (!validateLogin(email, password)) return
@@ -29,8 +30,10 @@ class AuthViewModel : ViewModel() {
             email = email,
             password = password,
             onSuccess = {
-                _uiState.value = AuthUiState()
-                onSuccess()
+                validateSignedInRole(
+                    selectedRole = selectedRole,
+                    onSuccess = onSuccess
+                )
             },
             onFailure = { error ->
                 _uiState.value = AuthUiState(errorMessage = error)
@@ -43,6 +46,7 @@ class AuthViewModel : ViewModel() {
         lastName: String,
         email: String,
         password: String,
+        role: Constants.UserRole,
         onSuccess: () -> Unit
     ) {
         if (!validateRegister(firstName, lastName, email, password)) return
@@ -57,7 +61,7 @@ class AuthViewModel : ViewModel() {
                     firstName = firstName,
                     lastName = lastName,
                     email = email,
-                    role = Constants.UserRole.DANCER,
+                    role = role,
                     onSuccess = onSuccess
                 )
             },
@@ -97,6 +101,36 @@ class AuthViewModel : ViewModel() {
 
     fun clearError() {
         _uiState.value = _uiState.value?.copy(errorMessage = null) ?: AuthUiState()
+    }
+
+    private fun validateSignedInRole(
+        selectedRole: Constants.UserRole,
+        onSuccess: () -> Unit
+    ) {
+        val uid = authRepository.getCurrentUserUid()
+        if (uid == null) {
+            _uiState.value = AuthUiState(errorMessage = "User is not logged in")
+            return
+        }
+
+        userRepository.getUserByUid(
+            uid = uid,
+            onSuccess = { user ->
+                if (user.role.matchesRole(selectedRole)) {
+                    _uiState.value = AuthUiState()
+                    onSuccess()
+                } else {
+                    authRepository.logout()
+                    _uiState.value = AuthUiState(
+                        errorMessage = "This account is registered as ${user.role.toRoleLabel()}"
+                    )
+                }
+            },
+            onFailure = { error ->
+                authRepository.logout()
+                _uiState.value = AuthUiState(errorMessage = error)
+            }
+        )
     }
 
     private fun createUserProfile(
@@ -161,6 +195,19 @@ class AuthViewModel : ViewModel() {
             }
 
             else -> true
+        }
+    }
+
+    private fun String.matchesRole(role: Constants.UserRole): Boolean {
+        return equals(role.name, ignoreCase = true) ||
+            equals(role.firestoreValue, ignoreCase = true)
+    }
+
+    private fun String.toRoleLabel(): String {
+        return when {
+            matchesRole(Constants.UserRole.STUDIO_MANAGER) -> "Studio Manager"
+            matchesRole(Constants.UserRole.ADMIN) -> "Admin"
+            else -> "Dancer"
         }
     }
 }

@@ -6,6 +6,7 @@ object Constants {
         const val USERS = "users"
         const val POSTS = "posts"
         const val STUDIOS = "studios"
+        const val STUDIO_CLAIMS = "studioClaims"
         const val PROFESSIONAL_APPLICATIONS = "professionalApplications"
         const val STUDIO_APPLICATIONS = "studioApplications"
         const val USER_ACTIVITY_EVENTS = "userActivityEvents"
@@ -13,6 +14,7 @@ object Constants {
 
     enum class UserRole(val firestoreValue: String) {
         DANCER("dancer"),
+        STUDIO_MANAGER("studio_manager"),
         ADMIN("admin")
     }
 

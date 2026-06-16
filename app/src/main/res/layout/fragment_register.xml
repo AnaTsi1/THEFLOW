@@ -29,11 +29,39 @@
                 android:textSize="28sp"
                 android:textStyle="bold" />
 
+            <LinearLayout
+                android:id="@+id/register_LAY_role"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/register_BTN_dancer"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_primary"
+                    android:text="Dancer"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/register_BTN_studio_manager"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_secondary"
+                    android:text="Studio Manager"
+                    android:textColor="@color/text_primary" />
+            </LinearLayout>
+
             <EditText
                 android:id="@+id/register_EDT_firstName"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="18dp"
                 android:background="@drawable/bg_input"
                 android:hint="First name"
                 android:inputType="textPersonName"

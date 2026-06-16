@@ -136,7 +136,9 @@ object DiscoveryRepository {
                         time = document.firstNonBlankString("openingHours", "time").ifBlank { "Contact studio" },
                         type = "Studio",
                         latitude = document.getDouble("latitude"),
-                        longitude = document.getDouble("longitude")
+                        longitude = document.getDouble("longitude"),
+                        claimStatus = document.firstNonBlankString("claimStatus"),
+                        ownerUid = document.firstNonBlankString("ownerUid")
                     )
                 }
                 onSuccess(firebaseItems)

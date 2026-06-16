@@ -11,5 +11,7 @@ data class DiscoveryItem(
     val time: String,
     val type: String,
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    val claimStatus: String = "",
+    val ownerUid: String = ""
 )
