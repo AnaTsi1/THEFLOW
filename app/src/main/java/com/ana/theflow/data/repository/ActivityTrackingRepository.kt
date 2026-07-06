@@ -1,5 +1,6 @@
 package com.ana.theflow.data.repository
 
+import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -19,12 +20,16 @@ class ActivityTrackingRepository {
         danceStyles: List<String> = emptyList(),
         location: String = "",
         metadata: Map<String, String> = emptyMap(),
+        interactionStrength: Double = 1.0,
         onFailure: (String) -> Unit = {}
     ) {
         val uid = auth.currentUser?.uid ?: return
         if (eventType.isBlank() || targetType.isBlank()) return
 
-        val weight = weightFor(eventType)
+        val normalizedStrength = normalizedInteractionStrength(interactionStrength)
+        val baseWeight = weightFor(eventType)
+        val finalWeight = baseWeight * normalizedStrength
+        val eventMetadata = metadata + ("interactionStrength" to normalizedStrength.toString())
         val docRef = db.collection(Constants.Collections.USER_ACTIVITY_EVENTS).document()
         val event = mapOf(
             "eventId" to docRef.id,
@@ -35,8 +40,8 @@ class ActivityTrackingRepository {
             "targetName" to targetName,
             "danceStyles" to danceStyles,
             "location" to location,
-            "metadata" to metadata,
-            "weight" to weight,
+            "metadata" to eventMetadata,
+            "weight" to finalWeight,
             "createdAt" to FieldValue.serverTimestamp()
         )
 
@@ -48,8 +53,8 @@ class ActivityTrackingRepository {
                     targetType = targetType,
                     danceStyles = danceStyles,
                     location = location,
-                    metadata = metadata,
-                    weight = weight,
+                    metadata = eventMetadata,
+                    weight = finalWeight,
                     onFailure = onFailure
                 )
             }
@@ -69,21 +74,81 @@ class ActivityTrackingRepository {
         )
     }
 
-    fun trackViewPost(postId: String, authorName: String = "", authorType: String = "") {
+    fun trackViewPost(
+        postId: String,
+        authorName: String = "",
+        authorType: String = "",
+        interactionStrength: Double = 1.0
+    ) {
         trackEvent(
             eventType = EventTypes.VIEW_POST,
             targetType = TargetTypes.POST,
             targetId = postId,
             targetName = authorName,
-            metadata = mapOf("authorType" to authorType)
+            metadata = mapOf("authorType" to authorType),
+            interactionStrength = interactionStrength
         )
     }
 
-    fun trackCreatePost(postId: String) {
+    fun trackPostViewed(post: Post, interactionStrength: Double = 1.0) {
+        trackEvent(
+            eventType = EventTypes.VIEW_POST,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata(),
+            interactionStrength = interactionStrength
+        )
+    }
+
+    fun trackPostOpened(post: Post, interactionStrength: Double = 1.0) {
+        trackEvent(
+            eventType = EventTypes.OPEN_POST,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata(),
+            interactionStrength = interactionStrength
+        )
+    }
+
+    fun trackPostSaved(post: Post, interactionStrength: Double = 1.0) {
+        trackEvent(
+            eventType = EventTypes.SAVE_ITEM,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata(),
+            interactionStrength = interactionStrength
+        )
+    }
+
+    fun trackPostLiked(post: Post, interactionStrength: Double = 1.0) {
+        trackEvent(
+            eventType = EventTypes.LIKE_POST,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata(),
+            interactionStrength = interactionStrength
+        )
+    }
+
+    fun trackCreatePost(
+        postId: String,
+        authorType: String = "",
+        text: String = "",
+        interactionStrength: Double = 1.0
+    ) {
         trackEvent(
             eventType = EventTypes.CREATE_POST,
             targetType = TargetTypes.POST,
-            targetId = postId
+            targetId = postId,
+            metadata = mapOf(
+                "authorType" to authorType,
+                "text" to text.take(120)
+            ).filterValues { it.isNotBlank() },
+            interactionStrength = interactionStrength
         )
     }
 
@@ -117,14 +182,22 @@ class ActivityTrackingRepository {
         )
     }
 
-    fun trackSaveItem(targetType: String, targetId: String, targetName: String = "", danceStyles: List<String> = emptyList(), location: String = "") {
+    fun trackSaveItem(
+        targetType: String,
+        targetId: String,
+        targetName: String = "",
+        danceStyles: List<String> = emptyList(),
+        location: String = "",
+        interactionStrength: Double = 1.0
+    ) {
         trackEvent(
             eventType = EventTypes.SAVE_ITEM,
             targetType = targetType,
             targetId = targetId,
             targetName = targetName,
             danceStyles = danceStyles,
-            location = location
+            location = location,
+            interactionStrength = interactionStrength
         )
     }
 
@@ -144,34 +217,34 @@ class ActivityTrackingRepository {
         danceStyles: List<String>,
         location: String,
         metadata: Map<String, String>,
-        weight: Int,
+        weight: Double,
         onFailure: (String) -> Unit
     ) {
         val updates = mutableMapOf<String, Any>(
-            "targetTypeScores.${scoreKey(targetType)}" to FieldValue.increment(weight.toLong()),
+            "targetTypeScores.${scoreKey(targetType)}" to FieldValue.increment(weight),
             "updatedAt" to FieldValue.serverTimestamp()
         )
 
         danceStyles.forEach { style ->
             if (style.isNotBlank()) {
-                updates["styleScores.${scoreKey(style)}"] = FieldValue.increment(weight.toLong())
+                updates["styleScores.${scoreKey(style)}"] = FieldValue.increment(weight)
             }
         }
 
         if (location.isNotBlank()) {
-            updates["locationScores.${scoreKey(location)}"] = FieldValue.increment(weight.toLong())
+            updates["locationScores.${scoreKey(location)}"] = FieldValue.increment(weight)
         }
 
         metadata["teacher"]?.takeIf { it.isNotBlank() }?.let { teacher ->
-            updates["teacherScores.${scoreKey(teacher)}"] = FieldValue.increment(weight.toLong())
+            updates["teacherScores.${scoreKey(teacher)}"] = FieldValue.increment(weight)
         }
 
         metadata["studio"]?.takeIf { it.isNotBlank() }?.let { studio ->
-            updates["studioScores.${scoreKey(studio)}"] = FieldValue.increment(weight.toLong())
+            updates["studioScores.${scoreKey(studio)}"] = FieldValue.increment(weight)
         }
 
-        metadata["authorType"]?.takeIf { eventType == EventTypes.VIEW_POST && it.isNotBlank() }?.let { authorType ->
-            updates["targetTypeScores.${scoreKey(authorType)}"] = FieldValue.increment(weight.toLong())
+        metadata["authorType"]?.takeIf { isPostInterestEvent(eventType) && it.isNotBlank() }?.let { authorType ->
+            updates["targetTypeScores.${scoreKey(authorType)}"] = FieldValue.increment(weight)
         }
 
         db.collection(Constants.Collections.USERS)
@@ -187,6 +260,8 @@ class ActivityTrackingRepository {
     private fun weightFor(eventType: String): Int {
         return when (eventType) {
             EventTypes.VIEW_POST -> 1
+            EventTypes.OPEN_POST -> 3
+            EventTypes.LIKE_POST -> 4
             EventTypes.VIEW_PROFILE -> 2
             EventTypes.SEARCH -> 3
             EventTypes.OPEN_DISCOVERY_ITEM -> 4
@@ -197,15 +272,30 @@ class ActivityTrackingRepository {
         }
     }
 
+    private fun normalizedInteractionStrength(interactionStrength: Double): Double {
+        if (interactionStrength.isNaN()) return 1.0
+        return interactionStrength.coerceIn(0.0, 1.0)
+    }
+
     private fun scoreKey(value: String): String {
         return value.trim()
             .ifBlank { "unknown" }
             .replace(Regex("[^A-Za-z0-9_-]"), "_")
     }
 
+    private fun isPostInterestEvent(eventType: String): Boolean {
+        return eventType == EventTypes.VIEW_POST ||
+            eventType == EventTypes.OPEN_POST ||
+            eventType == EventTypes.LIKE_POST ||
+            eventType == EventTypes.SAVE_ITEM ||
+            eventType == EventTypes.CREATE_POST
+    }
+
     object EventTypes {
         const val VIEW_PROFILE = "view_profile"
         const val VIEW_POST = "view_post"
+        const val OPEN_POST = "open_post"
+        const val LIKE_POST = "like_post"
         const val CREATE_POST = "create_post"
         const val OPEN_DISCOVERY_ITEM = "open_discovery_item"
         const val SEARCH = "search"
@@ -225,5 +315,13 @@ class ActivityTrackingRepository {
         const val EVENT = "event"
         const val DISCOVERY_ITEM = "discovery_item"
         const val SEARCH_QUERY = "search_query"
+    }
+
+    private fun Post.interactionMetadata(): Map<String, String> {
+        return mapOf(
+            "authorId" to authorId,
+            "authorType" to authorType,
+            "text" to text.take(120)
+        ).filterValues { it.isNotBlank() }
     }
 }

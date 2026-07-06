@@ -188,7 +188,11 @@ class ProfileFragment : Fragment() {
             onSuccess = {
                 binding.profileBTNCreatePost.isEnabled = true
                 binding.profileEDTNewPost.text?.clear()
-                activityTrackingRepository.trackCreatePost(it)
+                activityTrackingRepository.trackCreatePost(
+                    postId = it,
+                    authorType = user.role,
+                    text = text
+                )
                 loadOwnPosts(user.uid)
                 Toast.makeText(requireContext(), "Post created", Toast.LENGTH_SHORT).show()
             },

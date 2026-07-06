@@ -66,7 +66,49 @@ object DiscoveryRepository {
     fun isSaved(item: DiscoveryItem): Boolean = savedItemIds.contains(item.id)
 
     fun recommendedItems(): List<DiscoveryItem> {
-        return allItems().sortedByDescending { item -> scoreFor(item) }
+        val candidates = RecommendationEngine.generateCandidates(
+            items = allItems(),
+            preferredStyles = preferredStyles,
+            preferredLevel = preferredLevel,
+            preferredLocation = preferredLocation,
+            savedItemIds = savedItemIds,
+            styleScores = styleScores,
+            studioScores = studioScores,
+            teacherScores = teacherScores
+        )
+        return RecommendationEngine.rankCandidates(
+            candidates = candidates,
+            preferredStyles = preferredStyles,
+            preferredLevel = preferredLevel,
+            preferredLocation = preferredLocation,
+            savedItemIds = savedItemIds,
+            styleScores = styleScores,
+            studioScores = studioScores,
+            teacherScores = teacherScores
+        ).map { it.item }
+    }
+
+    fun recommendationResults(): List<RecommendationResult> {
+        val candidates = RecommendationEngine.generateCandidates(
+            items = allItems(),
+            preferredStyles = preferredStyles,
+            preferredLevel = preferredLevel,
+            preferredLocation = preferredLocation,
+            savedItemIds = savedItemIds,
+            styleScores = styleScores,
+            studioScores = studioScores,
+            teacherScores = teacherScores
+        )
+        return RecommendationEngine.rankCandidates(
+            candidates = candidates,
+            preferredStyles = preferredStyles,
+            preferredLevel = preferredLevel,
+            preferredLocation = preferredLocation,
+            savedItemIds = savedItemIds,
+            styleScores = styleScores,
+            studioScores = studioScores,
+            teacherScores = teacherScores
+        )
     }
 
     fun popularNearYou(): List<DiscoveryItem> {
@@ -149,12 +191,11 @@ object DiscoveryRepository {
     }
 
     fun explanationFor(item: DiscoveryItem): String {
-        return when {
-            (styleScores[item.style] ?: 0) > 0 -> "Because you viewed ${item.style} classes"
-            (studioScores[item.studio] ?: 0) > 0 -> "Because you saved ${item.studio}"
-            item.location == preferredLocation -> "Popular near $preferredLocation"
-            else -> lastReason
-        }
+        return recommendationResults()
+            .firstOrNull { it.item.id == item.id }
+            ?.reasons
+            ?.joinToString(separator = "\n")
+            ?: lastReason
     }
 
     fun behaviorSummary(): String {
@@ -187,15 +228,10 @@ object DiscoveryRepository {
     }
 
     private fun scoreFor(item: DiscoveryItem): Int {
-        var score = 0
-        if (preferredStyles.contains(item.style)) score += 4
-        if (item.level == preferredLevel) score += 2
-        if (item.location == preferredLocation) score += 3
-        score += styleScores[item.style] ?: 0
-        score += studioScores[item.studio] ?: 0
-        score += teacherScores[item.teacher] ?: 0
-        if (savedItemIds.contains(item.id)) score += 5
-        return score
+        return recommendationResults()
+            .firstOrNull { it.item.id == item.id }
+            ?.score
+            ?: 0
     }
 
     private fun DiscoveryItem.matches(query: String, value: String): Boolean {
