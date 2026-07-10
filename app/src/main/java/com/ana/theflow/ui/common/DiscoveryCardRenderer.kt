@@ -10,6 +10,7 @@ import com.ana.theflow.data.repository.DiscoveryRepository
 
 object DiscoveryCardRenderer {
 
+    // Adds a discovery item card to a parent layout.
     fun addItemCard(
         parent: LinearLayout,
         item: DiscoveryItem,
@@ -108,6 +109,7 @@ object DiscoveryCardRenderer {
     }
 }
 
+// Converts dp units to pixels.
 private fun Int.dp(): Int {
     return (this * android.content.res.Resources.getSystem().displayMetrics.density).toInt()
 }

@@ -10,6 +10,7 @@
         android:orientation="vertical">
 
         <TextView
+            android:id="@+id/onboarding_LBL_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Build Your Dance Profile"
@@ -18,6 +19,7 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/onboarding_LBL_subtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -66,14 +68,55 @@
                 <RadioButton android:id="@+id/onboarding_RDB_advanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Advanced" android:textColor="@color/text_secondary" />
             </RadioGroup>
 
-            <EditText
+            <AutoCompleteTextView
                 android:id="@+id/onboarding_EDT_location"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_input"
-                android:hint="Location"
+                android:focusable="true"
+                android:hint="City"
+                android:inputType="none"
                 android:text="Tel Aviv"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Optional preferences"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/onboarding_EDT_preferredStudios"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Preferred studios, comma separated"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/onboarding_EDT_preferredTeachers"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Preferred teachers, comma separated"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/onboarding_EDT_preferredDancers"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="Preferred dancers, comma separated"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_muted" />
 

@@ -21,6 +21,7 @@ data class PostRecommendationProfile(
 
 object RecommendationEngine {
 
+    // Sorts posts by recommendation score.
     fun rankPosts(
         posts: List<Post>,
         profile: PostRecommendationProfile
@@ -34,6 +35,7 @@ object RecommendationEngine {
         )
     }
 
+    // Calculates a recommendation score for one item.
     fun calculate(
         items: List<DiscoveryItem>,
         preferredStyles: Set<String>,
@@ -65,6 +67,7 @@ object RecommendationEngine {
         )
     }
 
+    // Builds recommendation candidates from discovery items.
     fun generateCandidates(
         items: List<DiscoveryItem>,
         preferredStyles: Set<String>,
@@ -91,6 +94,7 @@ object RecommendationEngine {
         }
     }
 
+    // Ranks discovery candidates and explains the score.
     fun rankCandidates(
         candidates: List<RecommendationCandidate>,
         preferredStyles: Set<String>,
@@ -140,6 +144,7 @@ object RecommendationEngine {
             .sortedByDescending { it.score }
     }
 
+    // Chooses the reason an item is a recommendation candidate.
     private fun candidateReasonFor(
         item: DiscoveryItem,
         preferredStyles: Set<String>,
@@ -169,6 +174,7 @@ object RecommendationEngine {
         }
     }
 
+    // Adds score for matching preferred styles.
     private fun addPreferredStyleScore(
         item: DiscoveryItem,
         preferredStyles: Set<String>,
@@ -179,6 +185,7 @@ object RecommendationEngine {
         return 4
     }
 
+    // Adds score for matching the preferred level.
     private fun addPreferredLevelScore(
         item: DiscoveryItem,
         preferredLevel: String,
@@ -189,6 +196,7 @@ object RecommendationEngine {
         return 2
     }
 
+    // Adds score for matching the preferred location.
     private fun addPreferredLocationScore(
         item: DiscoveryItem,
         preferredLocation: String,
@@ -199,6 +207,7 @@ object RecommendationEngine {
         return 3
     }
 
+    // Adds score for saved items.
     private fun addSavedItemScore(
         item: DiscoveryItem,
         savedItemIds: Set<String>,
@@ -209,6 +218,7 @@ object RecommendationEngine {
         return 5
     }
 
+    // Adds score from past user behavior.
     private fun addBehaviorScore(
         label: String,
         score: Int,
@@ -220,6 +230,7 @@ object RecommendationEngine {
         return score
     }
 
+    // Converts text into a safe recommendation score key.
     fun scoreKey(value: String): String {
         return value.trim()
             .ifBlank { "unknown" }

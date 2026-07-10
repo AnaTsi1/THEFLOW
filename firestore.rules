@@ -1,0 +1,282 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(userDoc(request.auth.uid))
+        && get(userDoc(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isStudioManagerRole() {
+      return signedIn()
+        && exists(userDoc(request.auth.uid))
+        && get(userDoc(request.auth.uid)).data.role in ['studio_manager', 'STUDIO_MANAGER'];
+    }
+
+    function unchanged(field) {
+      return !(field in request.resource.data)
+        || (field in resource.data && request.resource.data[field] == resource.data[field]);
+    }
+
+    function keepsUserAdminFieldsSafe() {
+      return unchanged('role')
+        && unchanged('verifiedTeacher')
+        && unchanged('verifiedChoreographer')
+        && unchanged('professionalBadges')
+        && unchanged('managedStudioIds');
+    }
+
+    function createsOwnUser(uid) {
+      return isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['dancer', 'studio_manager', 'DANCER', 'STUDIO_MANAGER'];
+    }
+
+    function isPostAuthor() {
+      return signedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    function createsOwnPost() {
+      return signedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.visibility in ['public', 'followers', 'private'];
+    }
+
+    function isPublicPost() {
+      return resource.data.visibility == 'public';
+    }
+
+    function isSafePostEngagementUpdate(fields) {
+      return signedIn()
+        && isPublicPost()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function isSafeLikeCountUpdate() {
+      return isSafePostEngagementUpdate(['likesCount', 'updatedAt'])
+        && (
+          request.resource.data.likesCount == resource.data.likesCount + 1
+          || request.resource.data.likesCount == resource.data.likesCount - 1
+        );
+    }
+
+    function isSafeCommentCountUpdate() {
+      return isSafePostEngagementUpdate(['commentsCount', 'updatedAt'])
+        && request.resource.data.commentsCount == resource.data.commentsCount + 1;
+    }
+
+    function isStudioOwnerOrManager() {
+      return signedIn()
+        && (
+          resource.data.ownerUid == request.auth.uid
+          || request.auth.uid in resource.data.managerUids
+        );
+    }
+
+    function createsStudioDraft() {
+      return signedIn()
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.verified == false
+        && (
+          !('ownerUid' in request.resource.data)
+          || request.resource.data.ownerUid == ''
+          || request.resource.data.ownerUid == request.auth.uid
+        );
+    }
+
+    function isVisibleStudio() {
+      return resource.data.verified == true || resource.data.status == 'APPROVED';
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn();
+      allow list: if isAdmin();
+      allow create: if createsOwnUser(uid) || isAdmin();
+      allow update: if isAdmin() || (isOwner(uid) && keepsUserAdminFieldsSafe());
+      allow delete: if isAdmin() || isOwner(uid);
+
+      match /recommendationProfile/{profileId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /followingDancers/{followId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /followingTeachers/{followId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /followingStudios/{followId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /followers/{followerId} {
+        allow read: if signedIn();
+        allow create, update, delete: if isOwner(uid) || isOwner(followerId) || isAdmin();
+      }
+
+      match /savedPosts/{savedId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /savedItems/{savedId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /favoritePosts/{favoriteId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /favorites/{favoriteId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /likedPosts/{likedId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /{subcollection}/{document=**} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    match /posts/{postId} {
+      allow get, list: if isPublicPost() || isPostAuthor() || isAdmin();
+      allow create: if createsOwnPost();
+      allow update: if isAdmin()
+        || isPostAuthor()
+        || isSafeLikeCountUpdate()
+        || isSafeCommentCountUpdate();
+      allow delete: if isPostAuthor() || isAdmin();
+
+      match /likes/{uid} {
+        allow read: if signedIn();
+        allow write: if isOwner(uid) || isAdmin();
+      }
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if isAdmin()
+          || (signedIn() && resource.data.authorId == request.auth.uid);
+      }
+
+      match /saves/{uid} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    match /studios/{studioId} {
+      allow get: if signedIn() && (isVisibleStudio() || isStudioOwnerOrManager() || isAdmin());
+      allow list: if signedIn();
+      allow create: if createsStudioDraft() || isAdmin();
+      allow update: if isAdmin()
+        || isStudioOwnerOrManager()
+        || (
+          isStudioManagerRole()
+          && isVisibleStudio()
+          && (!('ownerUid' in resource.data) || resource.data.ownerUid == '')
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['claimStatus', 'claimUpdatedAt'])
+          && request.resource.data.claimStatus == 'PENDING'
+        );
+      allow delete: if isAdmin();
+
+      match /followers/{uid} {
+        allow read: if signedIn();
+        allow write: if isOwner(uid) || isAdmin();
+      }
+
+      match /favorites/{uid} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /savedBy/{uid} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    match /studioClaims/{claimId} {
+      allow get, list: if isAdmin()
+        || (signedIn() && resource.data.requesterUid == request.auth.uid)
+        || (signedIn() && resource.data.status == 'PENDING');
+      allow create: if isStudioManagerRole()
+        && request.resource.data.requesterUid == request.auth.uid
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.studioId is string
+        && request.resource.data.studioId != '';
+      allow update, delete: if isAdmin();
+    }
+
+    match /professionalApplications/{applicationId} {
+      allow get, list: if isAdmin()
+        || (signedIn() && resource.data.applicantUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.applicantUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.applicationType in ['verified_teacher', 'choreographer', 'studio'];
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.applicantUid == request.auth.uid
+          && request.resource.data.applicantUid == request.auth.uid
+          && request.resource.data.status == resource.data.status
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /studioApplications/{applicationId} {
+      allow get, list: if isAdmin()
+        || (
+          signedIn()
+          && (
+            !('applicantUid' in resource.data)
+            || resource.data.applicantUid == request.auth.uid
+          )
+        );
+      allow create: if signedIn()
+        && (
+          !('applicantUid' in request.resource.data)
+          || request.resource.data.applicantUid == request.auth.uid
+        );
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && (
+            !('applicantUid' in resource.data)
+            || resource.data.applicantUid == request.auth.uid
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /userActivityEvents/{eventId} {
+      allow get, list: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.eventType is string
+        && request.resource.data.targetType is string;
+      allow update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

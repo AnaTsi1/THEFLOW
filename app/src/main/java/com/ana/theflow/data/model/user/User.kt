@@ -22,6 +22,8 @@ data class User(
     val profileImageUrl: String = "",
     val headline: String = "",
     val bio: String = "",
+    val professionalBackground: String = "",
+    val skills: List<String> = emptyList(),
     val yearsOfExperience: String = "",
     val studiosTrainedAt: List<String> = emptyList(),
     val teachersLearnedFrom: List<String> = emptyList(),

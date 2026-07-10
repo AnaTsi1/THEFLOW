@@ -15,6 +15,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
     private val authViewModel: AuthViewModel by viewModels()
 
+    // Sets up the activity when it is created.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -32,12 +33,14 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    // Shows the login screen.
     fun showLogin() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.auth_fragment_container, LoginFragment())
             .commit()
     }
 
+    // Shows the registration screen.
     fun showRegister() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.auth_fragment_container, RegisterFragment())
@@ -45,6 +48,7 @@ class LoginActivity : AppCompatActivity() {
             .commit()
     }
 
+    // Sends a signed-in user to the correct app screen.
     fun routeSignedInUser() {
         binding.authFragmentContainer.visibility = View.GONE
         authViewModel.loadCurrentUser(
@@ -64,6 +68,7 @@ class LoginActivity : AppCompatActivity() {
         )
     }
 
+    // Opens the main app after authentication.
     fun openMainApp(startDestination: String) {
         val intent = Intent(this, MainActivity::class.java).apply {
             putExtra(MainActivity.EXTRA_START_DESTINATION, startDestination)

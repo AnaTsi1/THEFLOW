@@ -2,7 +2,10 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:paddingLeft="16dp"
+    android:paddingTop="14dp"
+    android:paddingRight="16dp">
 
     <LinearLayout
         android:id="@+id/home_LAY_top"
@@ -23,7 +26,7 @@
                 android:layout_height="wrap_content"
                 android:text="THE FLOW"
                 android:textColor="@color/text_primary"
-                android:textSize="30sp"
+                android:textSize="26sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -40,21 +43,21 @@
     <TextView
         android:id="@+id/home_BTN_search"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="16dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="14dp"
         android:background="@drawable/bg_input"
         android:gravity="center_vertical"
-        android:paddingLeft="18dp"
-        android:paddingRight="18dp"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
         android:text="Search dancers, teachers, studios, classes, events"
         android:textColor="@color/text_muted"
-        android:textSize="15sp" />
+        android:textSize="14sp" />
 
     <LinearLayout
         android:id="@+id/home_LAY_tabs"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="14dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="12dp"
         android:background="@drawable/bg_card"
         android:gravity="center"
         android:orientation="horizontal"
@@ -96,19 +99,19 @@
         android:id="@+id/home_LBL_message"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="14dp"
         android:background="@drawable/bg_card"
-        android:padding="18dp"
+        android:padding="14dp"
         android:text="No posts yet. Create the first post from your profile."
         android:textColor="@color/text_secondary"
-        android:textSize="15sp"
+        android:textSize="14sp"
         android:visibility="gone" />
 
     <ScrollView
         android:id="@+id/home_SCROLL_feed"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="14dp"
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingBottom="14dp">

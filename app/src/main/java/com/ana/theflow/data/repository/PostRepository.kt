@@ -1,6 +1,8 @@
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.post.Post
+import com.ana.theflow.data.model.post.PostComment
+import com.ana.theflow.data.model.post.PostMediaItem
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
@@ -14,18 +16,61 @@ class PostRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
+    // Creates a new text post for the author.
     fun createTextPost(
         author: User,
         text: String,
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        if (author.uid.isBlank()) {
-            onFailure("Missing author id")
+        createPost(
+            author = author,
+            text = text,
+            onSuccess = onSuccess,
+            onFailure = onFailure
+        )
+    }
+
+    // Creates a post with optional typed composer fields.
+    fun createPost(
+        author: User,
+        text: String,
+        mediaType: String = "none",
+        postType: String = POST_TYPE_REGULAR,
+        activityType: String = "",
+        activityLocation: String = "",
+        activityDate: String = "",
+        activityTime: String = "",
+        activityPrice: String = "",
+        activityLevel: String = "",
+        activityDescription: String = "",
+        collaborationLookingFor: String = "",
+        collaborationStyle: String = "",
+        collaborationLocation: String = "",
+        collaborationDate: String = "",
+        collaborationPaid: String = "",
+        collaborationDescription: String = "",
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val currentUid = auth.currentUser?.uid
+        if (currentUid == null) {
+            onFailure("User is not logged in")
             return
         }
-        if (text.isBlank()) {
-            onFailure("Post text cannot be empty")
+        if (author.uid.isNotBlank() && author.uid != currentUid) {
+            onFailure("Post author does not match the signed-in user")
+            return
+        }
+        val hasBody = listOf(
+            text,
+            activityDescription,
+            collaborationDescription,
+            activityType,
+            collaborationLookingFor
+        ).any { it.isNotBlank() }
+        if (!hasBody && mediaType == "none") {
+            onFailure("Add text, media, or post details")
             return
         }
 
@@ -33,13 +78,27 @@ class PostRepository {
         val authorName = "${author.firstName} ${author.lastName}".trim().ifBlank { "Dancer" }
         val post = mapOf(
             "postId" to docRef.id,
-            "authorId" to author.uid,
+            "authorId" to currentUid,
             "authorName" to authorName,
             "authorProfileImageUrl" to author.profileImageUrl,
             "authorType" to author.role.ifBlank { "dancer" },
             "text" to text.trim(),
             "mediaUrls" to emptyList<String>(),
-            "mediaType" to "none",
+            "mediaType" to mediaType.ifBlank { "none" },
+            "postType" to postType.ifBlank { POST_TYPE_REGULAR },
+            "activityType" to activityType.trim(),
+            "activityLocation" to activityLocation.trim(),
+            "activityDate" to activityDate.trim(),
+            "activityTime" to activityTime.trim(),
+            "activityPrice" to activityPrice.trim(),
+            "activityLevel" to activityLevel.trim(),
+            "activityDescription" to activityDescription.trim(),
+            "collaborationLookingFor" to collaborationLookingFor.trim(),
+            "collaborationStyle" to collaborationStyle.trim(),
+            "collaborationLocation" to collaborationLocation.trim(),
+            "collaborationDate" to collaborationDate.trim(),
+            "collaborationPaid" to collaborationPaid.trim(),
+            "collaborationDescription" to collaborationDescription.trim(),
             "createdAt" to FieldValue.serverTimestamp(),
             "visibility" to "public",
             "likesCount" to 0,
@@ -53,6 +112,7 @@ class PostRepository {
             }
     }
 
+    // Loads posts for the current feed.
     fun loadFeed(
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
@@ -60,6 +120,7 @@ class PostRepository {
         loadForYouFeed(onSuccess = onSuccess, onFailure = onFailure)
     }
 
+    // Loads public posts for the personalized feed.
     fun loadForYouFeed(
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
@@ -83,6 +144,7 @@ class PostRepository {
             }
     }
 
+    // Loads posts from followed authors.
     fun loadFollowingFeed(
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
@@ -104,6 +166,7 @@ class PostRepository {
         )
     }
 
+    // Loads dancer ids followed by the current user.
     fun loadFollowedDancerIds(
         onSuccess: (List<String>) -> Unit,
         onFailure: (String) -> Unit = {}
@@ -115,6 +178,7 @@ class PostRepository {
         )
     }
 
+    // Loads teacher ids followed by the current user.
     fun loadFollowedTeacherIds(
         onSuccess: (List<String>) -> Unit,
         onFailure: (String) -> Unit = {}
@@ -126,6 +190,7 @@ class PostRepository {
         )
     }
 
+    // Loads studio ids followed by the current user.
     fun loadFollowedStudioIds(
         onSuccess: (List<String>) -> Unit,
         onFailure: (String) -> Unit = {}
@@ -137,6 +202,7 @@ class PostRepository {
         )
     }
 
+    // Loads posts written by one author.
     fun loadPostsByAuthor(
         authorId: String,
         onSuccess: (List<Post>) -> Unit,
@@ -156,6 +222,241 @@ class PostRepository {
             }
     }
 
+    // Loads one post by id.
+    fun loadPostById(
+        postId: String,
+        onSuccess: (Post) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .get()
+            .addOnSuccessListener { document ->
+                val post = document.toObject(Post::class.java)?.copy(postId = document.id)
+                if (post == null) {
+                    onFailure("Post was not found")
+                } else {
+                    onSuccess(post)
+                }
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load post")
+            }
+    }
+
+    // Updates the editable text of an existing post.
+    fun updatePostText(
+        postId: String,
+        text: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (postId.isBlank()) {
+            onFailure("Missing post id")
+            return
+        }
+
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .update(
+                mapOf(
+                    "text" to text.trim(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to update post")
+            }
+    }
+
+    // Deletes one post document.
+    fun deletePost(
+        postId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (postId.isBlank()) {
+            onFailure("Missing post id")
+            return
+        }
+
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .delete()
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to delete post")
+            }
+    }
+
+    // Saves the editable media metadata for one post.
+    fun updatePostMediaItems(
+        postId: String,
+        mediaItems: List<PostMediaItem>,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (postId.isBlank()) {
+            onFailure("Missing post id")
+            return
+        }
+
+        val mediaMaps = mediaItems.map { item ->
+            mapOf(
+                "id" to item.id,
+                "url" to item.url,
+                "mediaType" to item.mediaType,
+                "visibleInMedia" to item.visibleInMedia,
+                "pinned" to item.pinned,
+                "uploadedAt" to item.uploadedAt
+            )
+        }
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .update(
+                mapOf(
+                    "mediaItems" to mediaMaps,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to update media")
+            }
+    }
+
+    // Toggles the current user's like on one post.
+    fun toggleLike(
+        postId: String,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        val postRef = db.collection(Constants.Collections.POSTS).document(postId)
+        val likeRef = postRef.collection(LIKES_COLLECTION).document(uid)
+        db.runTransaction { transaction ->
+            val likeSnapshot = transaction.get(likeRef)
+            val isLiked = likeSnapshot.exists()
+            if (isLiked) {
+                transaction.delete(likeRef)
+                transaction.update(postRef, "likesCount", FieldValue.increment(-1))
+            } else {
+                transaction.set(
+                    likeRef,
+                    mapOf(
+                        "userId" to uid,
+                        "createdAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                transaction.update(postRef, "likesCount", FieldValue.increment(1))
+            }
+            !isLiked
+        }
+            .addOnSuccessListener { isLiked -> onSuccess(isLiked) }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to update like")
+            }
+    }
+
+    // Checks whether the current user liked one post.
+    fun isPostLikedByCurrentUser(
+        postId: String,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onSuccess(false)
+            return
+        }
+
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .collection(LIKES_COLLECTION)
+            .document(uid)
+            .get()
+            .addOnSuccessListener { document -> onSuccess(document.exists()) }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load like state")
+            }
+    }
+
+    // Adds a comment to one post.
+    fun addComment(
+        postId: String,
+        author: User,
+        text: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val currentUid = auth.currentUser?.uid
+        if (currentUid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+        if (author.uid.isNotBlank() && author.uid != currentUid) {
+            onFailure("Comment author does not match the signed-in user")
+            return
+        }
+        val cleanText = text.trim()
+        if (cleanText.isBlank()) {
+            onFailure("Comment cannot be empty")
+            return
+        }
+
+        val postRef = db.collection(Constants.Collections.POSTS).document(postId)
+        val commentRef = postRef.collection(COMMENTS_COLLECTION).document()
+        val authorName = "${author.firstName} ${author.lastName}".trim().ifBlank { "Dancer" }
+        val comment = mapOf(
+            "commentId" to commentRef.id,
+            "postId" to postId,
+            "authorId" to currentUid,
+            "authorName" to authorName,
+            "authorProfileImageUrl" to author.profileImageUrl,
+            "text" to cleanText,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+
+        db.runBatch { batch ->
+            batch.set(commentRef, comment)
+            batch.update(postRef, "commentsCount", FieldValue.increment(1))
+        }
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to add comment")
+            }
+    }
+
+    // Loads recent comments for one post.
+    fun loadComments(
+        postId: String,
+        onSuccess: (List<PostComment>) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .collection(COMMENTS_COLLECTION)
+            .orderBy("createdAt", Query.Direction.ASCENDING)
+            .limit(30)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val comments = snapshot.documents.mapNotNull { document ->
+                    document.toObject(PostComment::class.java)?.copy(commentId = document.id)
+                }
+                onSuccess(comments)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load comments")
+            }
+    }
+
+    // Ranks posts using the current user recommendation profile.
     private fun rankForYouFeed(
         posts: List<Post>,
         onSuccess: (List<Post>) -> Unit
@@ -184,6 +485,7 @@ class PostRepository {
             }
     }
 
+    // Loads all followed author ids for the following feed.
     private fun loadFollowedAuthorIds(
         onSuccess: (List<String>) -> Unit,
         onFailure: (String) -> Unit
@@ -192,6 +494,7 @@ class PostRepository {
         val followedIds = linkedSetOf<String>()
         var completed = false
 
+        // Adds one completed follow list to the combined result.
         fun completeWith(ids: List<String>) {
             if (completed) return
             followedIds.addAll(ids)
@@ -202,6 +505,7 @@ class PostRepository {
             }
         }
 
+        // Stops loading and returns an error.
         fun fail(message: String) {
             if (completed) return
             completed = true
@@ -213,6 +517,7 @@ class PostRepository {
         loadFollowedStudioIds(onSuccess = ::completeWith, onFailure = ::fail)
     }
 
+    // Loads public posts written by followed authors.
     private fun loadPostsByFollowedAuthors(
         followedAuthorIds: List<String>,
         onSuccess: (List<Post>) -> Unit,
@@ -247,6 +552,7 @@ class PostRepository {
         }
     }
 
+    // Loads followed ids from one follow collection.
     private fun loadFollowedIds(
         followType: FollowType,
         onSuccess: (List<String>) -> Unit,
@@ -276,11 +582,13 @@ class PostRepository {
             }
     }
 
+    // Converts a Firestore document into a post recommendation profile.
     private fun DocumentSnapshot.toPostRecommendationProfile(): PostRecommendationProfile {
         val targetTypeScores = numericMap("targetTypeScores")
         return PostRecommendationProfile(targetTypeScores = targetTypeScores)
     }
 
+    // Reads a numeric map field from a Firestore document.
     private fun DocumentSnapshot.numericMap(field: String): Map<String, Int> {
         val value = get(field) as? Map<*, *> ?: return emptyMap()
         return value.mapNotNull { (key, score) ->
@@ -294,6 +602,9 @@ class PostRepository {
         const val FIRESTORE_WHERE_IN_LIMIT = 10
         const val RECOMMENDATION_PROFILE_COLLECTION = "recommendationProfile"
         const val RECOMMENDATION_PROFILE_DOCUMENT = "main"
+        const val POST_TYPE_REGULAR = "regular"
+        const val LIKES_COLLECTION = "likes"
+        const val COMMENTS_COLLECTION = "comments"
     }
 
     private enum class FollowType(

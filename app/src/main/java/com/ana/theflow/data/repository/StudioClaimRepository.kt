@@ -11,6 +11,7 @@ class StudioClaimRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
+    // Loads the claim status for a studio.
     fun loadStudioClaimState(
         studioId: String,
         onSuccess: (StudioClaimState) -> Unit,
@@ -42,6 +43,7 @@ class StudioClaimRepository {
             }
     }
 
+    // Submits a claim request for a studio.
     fun submitClaim(
         studioId: String,
         studioName: String,
@@ -136,6 +138,7 @@ class StudioClaimRepository {
             }
     }
 
+    // Checks that the studio has no pending claim.
     private fun ensureNoPendingClaim(
         studioId: String,
         onSuccess: () -> Unit,
@@ -158,6 +161,7 @@ class StudioClaimRepository {
             }
     }
 
+    // Creates a studio claim and marks the studio as pending.
     private fun createClaim(
         studioId: String,
         studioName: String,
@@ -202,6 +206,7 @@ class StudioClaimRepository {
             }
     }
 
+    // Checks whether a role value is a studio manager role.
     private fun String.isStudioManagerRole(): Boolean {
         return equals(Constants.UserRole.STUDIO_MANAGER.name, ignoreCase = true) ||
             equals(Constants.UserRole.STUDIO_MANAGER.firestoreValue, ignoreCase = true)

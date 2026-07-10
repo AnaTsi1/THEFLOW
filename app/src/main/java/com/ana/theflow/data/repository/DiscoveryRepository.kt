@@ -30,14 +30,26 @@ object DiscoveryRepository {
     private val savedItemIds = mutableSetOf<String>()
     private var lastReason = "Based on your dance preferences"
 
-    fun hydratePreferences(styles: List<String>, level: String, location: String) {
+    // Loads user preferences into discovery recommendations.
+    fun hydratePreferences(
+        styles: List<String>,
+        level: String,
+        location: String,
+        preferredStudios: List<String> = emptyList(),
+        preferredTeachers: List<String> = emptyList(),
+        preferredDancers: List<String> = emptyList()
+    ) {
         if (styles.isNotEmpty()) preferredStyles = styles.toMutableSet()
         if (level.isNotBlank()) preferredLevel = level
         if (location.isNotBlank()) preferredLocation = location
         preferredStyles.forEach { styleScores[it] = (styleScores[it] ?: 0) + 3 }
+        preferredStudios.forEach { studioScores[it] = (studioScores[it] ?: 0) + 3 }
+        preferredTeachers.forEach { teacherScores[it] = (teacherScores[it] ?: 0) + 3 }
+        preferredDancers.forEach { teacherScores[it] = (teacherScores[it] ?: 0) + 3 }
         lastReason = "Based on your dance profile"
     }
 
+    // Tracks a search action.
     fun trackSearch(style: String, location: String) {
         if (style.isNotBlank()) {
             styleScores[style] = (styleScores[style] ?: 0) + 2
@@ -49,6 +61,7 @@ object DiscoveryRepository {
         }
     }
 
+    // Updates local recommendation state when an item is opened.
     fun trackOpen(item: DiscoveryItem) {
         styleScores[item.style] = (styleScores[item.style] ?: 0) + 2
         studioScores[item.studio] = (studioScores[item.studio] ?: 0) + 2
@@ -56,6 +69,7 @@ object DiscoveryRepository {
         lastReason = "Because you viewed ${item.style} classes"
     }
 
+    // Updates local recommendation state when an item is saved.
     fun trackSave(item: DiscoveryItem) {
         savedItemIds.add(item.id)
         styleScores[item.style] = (styleScores[item.style] ?: 0) + 4
@@ -63,8 +77,10 @@ object DiscoveryRepository {
         lastReason = "Because you saved ${item.studio}"
     }
 
+    // Checks whether an item is saved locally.
     fun isSaved(item: DiscoveryItem): Boolean = savedItemIds.contains(item.id)
 
+    // Returns discovery items ranked for the user.
     fun recommendedItems(): List<DiscoveryItem> {
         val candidates = RecommendationEngine.generateCandidates(
             items = allItems(),
@@ -88,6 +104,7 @@ object DiscoveryRepository {
         ).map { it.item }
     }
 
+    // Returns ranked discovery results with explanations.
     fun recommendationResults(): List<RecommendationResult> {
         val candidates = RecommendationEngine.generateCandidates(
             items = allItems(),
@@ -111,12 +128,14 @@ object DiscoveryRepository {
         )
     }
 
+    // Returns popular discovery items near the preferred location.
     fun popularNearYou(): List<DiscoveryItem> {
         return allItems()
             .filter { it.location.equals(preferredLocation, ignoreCase = true) }
             .ifEmpty { allItems().take(3) }
     }
 
+    // Filters discovery items by search fields.
     fun search(
         style: String,
         level: String,
@@ -137,10 +156,12 @@ object DiscoveryRepository {
         }
     }
 
+    // Finds a discovery item by id.
     fun itemById(id: String): DiscoveryItem? {
         return allItems().firstOrNull { it.id == id }
     }
 
+    // Loads approved studio data from Firestore.
     fun loadApprovedStudios(
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
@@ -190,6 +211,7 @@ object DiscoveryRepository {
             }
     }
 
+    // Returns the recommendation explanation for an item.
     fun explanationFor(item: DiscoveryItem): String {
         return recommendationResults()
             .firstOrNull { it.item.id == item.id }
@@ -198,12 +220,14 @@ object DiscoveryRepository {
             ?: lastReason
     }
 
+    // Builds a short summary of recommendation behavior.
     fun behaviorSummary(): String {
         val topStyle = styleScores.maxByOrNull { it.value }?.key ?: preferredStyles.firstOrNull() ?: "Not set"
         val topStudio = studioScores.maxByOrNull { it.value }?.key ?: "No studio yet"
         return "Top style: $topStyle\nTop studio: $topStudio\nLocation: $preferredLocation"
     }
 
+    // Loads the current user recommendation profile.
     fun loadRecommendationProfile(
         onSuccess: (Map<String, Any>) -> Unit,
         onFailure: (String) -> Unit
@@ -227,6 +251,7 @@ object DiscoveryRepository {
             }
     }
 
+    // Returns the recommendation score for an item.
     private fun scoreFor(item: DiscoveryItem): Int {
         return recommendationResults()
             .firstOrNull { it.item.id == item.id }
@@ -234,14 +259,17 @@ object DiscoveryRepository {
             ?: 0
     }
 
+    // Checks whether a value matches a search query.
     private fun DiscoveryItem.matches(query: String, value: String): Boolean {
         return query.isBlank() || value.contains(query, ignoreCase = true)
     }
 
+    // Returns Firestore items or seed items when none are loaded.
     private fun allItems(): List<DiscoveryItem> {
         return firebaseItems.ifEmpty { seedItems }
     }
 
+    // Returns the first non-empty string field from a document.
     private fun com.google.firebase.firestore.DocumentSnapshot.firstNonBlankString(
         vararg fields: String
     ): String {

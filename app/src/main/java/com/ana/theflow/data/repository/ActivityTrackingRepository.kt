@@ -12,6 +12,7 @@ class ActivityTrackingRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
+    // Stores an activity event and updates recommendations.
     fun trackEvent(
         eventType: String,
         targetType: String,
@@ -63,6 +64,7 @@ class ActivityTrackingRepository {
             }
     }
 
+    // Tracks that a user profile was viewed.
     fun trackViewProfile(targetUserId: String, targetName: String = "", danceStyles: List<String> = emptyList(), location: String = "") {
         trackEvent(
             eventType = EventTypes.VIEW_PROFILE,
@@ -74,6 +76,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was viewed.
     fun trackViewPost(
         postId: String,
         authorName: String = "",
@@ -90,6 +93,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks a post impression.
     fun trackPostViewed(post: Post, interactionStrength: Double = 1.0) {
         trackEvent(
             eventType = EventTypes.VIEW_POST,
@@ -101,6 +105,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was opened.
     fun trackPostOpened(post: Post, interactionStrength: Double = 1.0) {
         trackEvent(
             eventType = EventTypes.OPEN_POST,
@@ -112,6 +117,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was saved.
     fun trackPostSaved(post: Post, interactionStrength: Double = 1.0) {
         trackEvent(
             eventType = EventTypes.SAVE_ITEM,
@@ -123,6 +129,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was liked.
     fun trackPostLiked(post: Post, interactionStrength: Double = 1.0) {
         trackEvent(
             eventType = EventTypes.LIKE_POST,
@@ -134,6 +141,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was created.
     fun trackCreatePost(
         postId: String,
         authorType: String = "",
@@ -152,6 +160,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a discovery item was opened.
     fun trackOpenDiscoveryItem(
         itemId: String,
         itemName: String,
@@ -171,6 +180,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks a search action.
     fun trackSearch(query: String, danceStyles: List<String> = emptyList(), location: String = "") {
         trackEvent(
             eventType = EventTypes.SEARCH,
@@ -182,6 +192,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that an item was saved.
     fun trackSaveItem(
         targetType: String,
         targetId: String,
@@ -201,6 +212,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a user was followed.
     fun trackFollowUser(targetUserId: String, targetName: String = "") {
         trackEvent(
             eventType = EventTypes.FOLLOW_USER,
@@ -210,6 +222,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Updates the user recommendation profile from an event.
     private fun updateRecommendationProfile(
         uid: String,
         eventType: String,
@@ -257,6 +270,7 @@ class ActivityTrackingRepository {
             }
     }
 
+    // Returns the recommendation weight for an event type.
     private fun weightFor(eventType: String): Int {
         return when (eventType) {
             EventTypes.VIEW_POST -> 1
@@ -272,17 +286,20 @@ class ActivityTrackingRepository {
         }
     }
 
+    // Clamps interaction strength to a safe range.
     private fun normalizedInteractionStrength(interactionStrength: Double): Double {
         if (interactionStrength.isNaN()) return 1.0
         return interactionStrength.coerceIn(0.0, 1.0)
     }
 
+    // Converts text into a safe recommendation score key.
     private fun scoreKey(value: String): String {
         return value.trim()
             .ifBlank { "unknown" }
             .replace(Regex("[^A-Za-z0-9_-]"), "_")
     }
 
+    // Checks whether an event should affect post interests.
     private fun isPostInterestEvent(eventType: String): Boolean {
         return eventType == EventTypes.VIEW_POST ||
             eventType == EventTypes.OPEN_POST ||
@@ -317,6 +334,7 @@ class ActivityTrackingRepository {
         const val SEARCH_QUERY = "search_query"
     }
 
+    // Builds metadata for post interaction tracking.
     private fun Post.interactionMetadata(): Map<String, String> {
         return mapOf(
             "authorId" to authorId,

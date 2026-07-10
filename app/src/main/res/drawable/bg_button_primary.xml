@@ -4,10 +4,10 @@
         android:angle="0"
         android:startColor="@color/neon_purple"
         android:endColor="@color/neon_pink" />
-    <corners android:radius="18dp" />
+    <corners android:radius="16dp" />
     <padding
-        android:bottom="12dp"
-        android:left="16dp"
-        android:right="16dp"
-        android:top="12dp" />
+        android:bottom="10dp"
+        android:left="14dp"
+        android:right="14dp"
+        android:top="10dp" />
 </shape>

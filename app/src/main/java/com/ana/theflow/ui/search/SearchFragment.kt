@@ -12,6 +12,7 @@ import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.databinding.FragmentSearchBinding
 import com.ana.theflow.ui.common.DiscoveryCardRenderer
+import com.ana.theflow.utilities.CityOptions
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -29,14 +30,18 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     private var googleMap: GoogleMap? = null
     private var currentResults: List<DiscoveryItem> = emptyList()
 
+    // Creates and returns the fragment view.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentSearchBinding.inflate(inflater, container, false)
         return binding.root
     }
 
+    // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val mapFragment = childFragmentManager.findFragmentById(R.id.search_MAP_results) as? SupportMapFragment
         mapFragment?.getMapAsync(this)
+        CityOptions.configureCitySelector(requireContext(), binding.searchEDTLocation)
+        CityOptions.configureCitySelector(requireContext(), binding.searchEDTMapLocation)
 
         binding.searchBTNQuery.setOnClickListener {
             runSimpleSearch()
@@ -67,6 +72,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         )
     }
 
+    // Configures the Google Map when it is ready.
     override fun onMapReady(map: GoogleMap) {
         googleMap = map.apply {
             uiSettings.isZoomControlsEnabled = true
@@ -80,10 +86,11 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         renderMapMarkers(currentResults)
     }
 
+    // Runs an advanced search using all fields.
     private fun runManualSearch() {
         val query = binding.searchEDTQuery.text.toString()
         val style = binding.searchEDTStyle.text.toString()
-        val location = binding.searchEDTLocation.text.toString()
+        val location = selectedOptionalCity(binding.searchEDTLocation.text.toString())
         val results = DiscoveryRepository.search(
             style = style,
             level = binding.searchEDTLevel.text.toString(),
@@ -108,6 +115,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         renderResults(results, "Search results", "Search results")
     }
 
+    // Runs a simple text search.
     private fun runSimpleSearch() {
         val query = binding.searchEDTQuery.text.toString()
         val results = DiscoveryRepository.recommendedItems().filterByFreeText(query)
@@ -125,6 +133,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         )
     }
 
+    // Shows the default recommended search results.
     private fun renderRecommendedResults() {
         renderResults(
             items = DiscoveryRepository.recommendedItems(),
@@ -133,10 +142,11 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         )
     }
 
+    // Runs a search using the map filter fields.
     private fun runMapFilter() {
         val style = binding.searchEDTMapStyle.text.toString()
         val level = binding.searchEDTMapLevel.text.toString()
-        val location = binding.searchEDTMapLocation.text.toString()
+        val location = selectedOptionalCity(binding.searchEDTMapLocation.text.toString())
         val results = DiscoveryRepository.search(
             style = style,
             level = level,
@@ -155,6 +165,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         renderResults(results, "Map filtered results", "Search results")
     }
 
+    // Shows search results in the list and map.
     private fun renderResults(items: List<DiscoveryItem>, label: String, title: String) {
         currentResults = items
         binding.searchLBLRecommendationsTitle.text = title
@@ -181,10 +192,17 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
+    // Shows or hides a section.
     private fun toggleSection(section: View) {
         section.visibility = if (section.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
+    // Returns a normalized city filter or blank when no city is selected.
+    private fun selectedOptionalCity(value: String): String {
+        return CityOptions.normalizeOptionalCity(value).orEmpty()
+    }
+
+    // Filters items by free text.
     private fun List<DiscoveryItem>.filterByFreeText(query: String): List<DiscoveryItem> {
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) return this
@@ -196,6 +214,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
+    // Draws search result markers on the map.
     private fun renderMapMarkers(items: List<DiscoveryItem>) {
         val map = googleMap ?: return
         map.clear()
@@ -229,12 +248,14 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
+    // Converts an item location into map coordinates.
     private fun DiscoveryItem.toLatLng(): LatLng? {
         val latitude = latitude ?: return null
         val longitude = longitude ?: return null
         return LatLng(latitude, longitude)
     }
 
+    // Clears the fragment binding when the view is destroyed.
     override fun onDestroyView() {
         super.onDestroyView()
         googleMap = null

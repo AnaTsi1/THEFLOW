@@ -16,11 +16,13 @@ class DiscoverFragment : Fragment() {
     private var _binding: FragmentDiscoverBinding? = null
     private val binding get() = _binding!!
 
+    // Creates and returns the fragment view.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDiscoverBinding.inflate(inflater, container, false)
         return binding.root
     }
 
+    // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.discoverEDTSearch.setOnEditorActionListener { textView, _, _ ->
             DiscoveryRepository.trackSearch(textView.text.toString(), "")
@@ -42,6 +44,7 @@ class DiscoverFragment : Fragment() {
         )
     }
 
+    // Draws the screen content from current data.
     private fun render() {
         binding.discoverLBLExplanation.text = DiscoveryRepository.behaviorSummary()
         binding.discoverLAYRecommended.removeAllViews()
@@ -56,6 +59,7 @@ class DiscoverFragment : Fragment() {
         }
     }
 
+    // Adds one discovery card to a list.
     private fun addCard(parent: android.widget.LinearLayout, item: DiscoveryItem) {
         DiscoveryCardRenderer.addItemCard(
             parent = parent,
@@ -69,6 +73,7 @@ class DiscoverFragment : Fragment() {
         )
     }
 
+    // Clears the fragment binding when the view is destroyed.
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null

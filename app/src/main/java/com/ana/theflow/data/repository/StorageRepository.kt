@@ -12,6 +12,7 @@ class StorageRepository {
     private val storage = FirebaseStorage.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
+    // Uploads a profile image and saves its URL.
     fun uploadProfileImage(
         uid: String,
         imageUri: Uri,
@@ -42,10 +43,43 @@ class StorageRepository {
         )
     }
 
+    // Uploads a cover image and saves its URL.
+    fun uploadCoverImage(
+        uid: String,
+        imageUri: Uri,
+        onLoading: (Boolean) -> Unit = {},
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (uid.isBlank()) {
+            onFailure("Missing user id")
+            return
+        }
+
+        uploadAndSaveUrl(
+            path = "users/$uid/profile/cover.jpg",
+            fileUri = imageUri,
+            onLoading = onLoading,
+            saveUrl = { url, success, failure ->
+                db.collection(Constants.Collections.USERS)
+                    .document(uid)
+                    .update("coverImageUrl", url)
+                    .addOnSuccessListener { success() }
+                    .addOnFailureListener { error ->
+                        failure(error.message ?: "Failed to save cover image URL")
+                    }
+            },
+            onSuccess = onSuccess,
+            onFailure = onFailure
+        )
+    }
+
+    // Uploads post media and saves its URL.
     fun uploadPostMedia(
         postId: String,
         mediaUri: Uri,
         fileName: String,
+        mediaType: String = "photo",
         onLoading: (Boolean) -> Unit = {},
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
@@ -56,13 +90,23 @@ class StorageRepository {
         }
 
         val cleanFileName = sanitizeFileName(fileName)
+        val mediaId = "media_${System.currentTimeMillis()}"
         uploadAndSaveUrl(
             path = "posts/$postId/media/$cleanFileName",
             fileUri = mediaUri,
             onLoading = onLoading,
             saveUrl = { url, success, failure ->
+                val mediaItem = mapOf(
+                    "id" to mediaId,
+                    "url" to url,
+                    "mediaType" to mediaType.ifBlank { "photo" },
+                    "visibleInMedia" to true,
+                    "pinned" to false,
+                    "uploadedAt" to System.currentTimeMillis()
+                )
                 val updates = mapOf(
                     "mediaUrls" to FieldValue.arrayUnion(url),
+                    "mediaItems" to FieldValue.arrayUnion(mediaItem),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
                 db.collection(Constants.Collections.POSTS)
@@ -78,6 +122,7 @@ class StorageRepository {
         )
     }
 
+    // Uploads a studio application document and saves its metadata.
     fun uploadStudioApplicationDocument(
         applicationId: String,
         documentUri: Uri,
@@ -121,6 +166,7 @@ class StorageRepository {
         )
     }
 
+    // Uploads a file and then saves its download URL.
     private fun uploadAndSaveUrl(
         path: String,
         fileUri: Uri,
@@ -158,6 +204,7 @@ class StorageRepository {
             }
     }
 
+    // Cleans a file name for storage paths.
     private fun sanitizeFileName(fileName: String): String {
         return fileName
             .trim()

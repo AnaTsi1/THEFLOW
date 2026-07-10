@@ -19,6 +19,7 @@ private val DarkNeonColorScheme = darkColorScheme(
 )
 
 @Composable
+// Applies the app Compose theme.
 fun THEFLOWTheme(
     content: @Composable () -> Unit
 ) {

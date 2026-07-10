@@ -6,6 +6,7 @@ class AuthRepository {
 
     private val auth = FirebaseAuth.getInstance()
 
+    // Signs in a user with email and password.
     fun login(
         email: String,
         password: String,
@@ -19,6 +20,7 @@ class AuthRepository {
             }
     }
 
+    // Creates a new user account.
     fun register(
         email: String,
         password: String,
@@ -32,14 +34,17 @@ class AuthRepository {
             }
     }
 
+    // Signs out the current user and returns to login.
     fun logout() {
         auth.signOut()
     }
 
+    // Deletes the currently signed-in auth user.
     fun deleteCurrentUser() {
         auth.currentUser?.delete()
     }
 
+    // Returns the signed-in user id.
     fun getCurrentUserUid(): String? {
         return auth.currentUser?.uid
     }

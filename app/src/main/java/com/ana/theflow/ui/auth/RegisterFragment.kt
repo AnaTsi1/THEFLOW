@@ -17,6 +17,7 @@ class RegisterFragment : Fragment() {
     private val authViewModel: AuthViewModel by activityViewModels()
     private var selectedRole = Constants.UserRole.DANCER
 
+    // Creates and returns the fragment view.
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -26,12 +27,14 @@ class RegisterFragment : Fragment() {
         return binding.root
     }
 
+    // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         setupScreenTitle()
         observeViewModel()
         setupClickListeners()
     }
 
+    // Sets the title for the registration screen.
     private fun setupScreenTitle() {
         binding.registerLBLTitle.text = when (selectedRole) {
             Constants.UserRole.STUDIO_MANAGER -> "Create Studio Manager Account"
@@ -39,6 +42,7 @@ class RegisterFragment : Fragment() {
         }
     }
 
+    // Observes UI state changes from the view model.
     private fun observeViewModel() {
         authViewModel.uiState.observe(viewLifecycleOwner) { state ->
             binding.registerProgress.visibility = if (state.isLoading) View.VISIBLE else View.GONE
@@ -50,6 +54,7 @@ class RegisterFragment : Fragment() {
         }
     }
 
+    // Connects buttons to their click actions.
     private fun setupClickListeners() {
         binding.registerBTNDancer.setOnClickListener {
             selectedRole = Constants.UserRole.DANCER
@@ -70,6 +75,7 @@ class RegisterFragment : Fragment() {
         }
     }
 
+    // Starts registration with the entered details.
     private fun registerUser() {
         authViewModel.register(
             firstName = binding.registerEDTFirstName.text.toString().trim(),
@@ -86,6 +92,7 @@ class RegisterFragment : Fragment() {
         )
     }
 
+    // Updates the role selection buttons.
     private fun renderRoleSelection() {
         val dancerSelected = selectedRole == Constants.UserRole.DANCER
         setupScreenTitle()
@@ -99,6 +106,7 @@ class RegisterFragment : Fragment() {
         binding.registerBTNStudioManager.setTypeface(null, if (dancerSelected) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
     }
 
+    // Clears the fragment binding when the view is destroyed.
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null

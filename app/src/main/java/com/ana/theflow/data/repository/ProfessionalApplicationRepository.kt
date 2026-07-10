@@ -8,6 +8,7 @@ class ProfessionalApplicationRepository {
 
     private val db = FirebaseFirestore.getInstance()
 
+    // Submits a professional application for review.
     fun submitApplication(
         applicantUid: String,
         applicationType: Constants.ProfessionalApplicationType,

@@ -17,6 +17,7 @@ class LoginFragment : Fragment() {
     private val authViewModel: AuthViewModel by activityViewModels()
     private var selectedRole = Constants.UserRole.DANCER
 
+    // Creates and returns the fragment view.
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -26,11 +27,13 @@ class LoginFragment : Fragment() {
         return binding.root
     }
 
+    // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         observeViewModel()
         setupClickListeners()
     }
 
+    // Observes UI state changes from the view model.
     private fun observeViewModel() {
         authViewModel.uiState.observe(viewLifecycleOwner) { state ->
             binding.loginProgress.visibility = if (state.isLoading) View.VISIBLE else View.GONE
@@ -43,6 +46,7 @@ class LoginFragment : Fragment() {
         }
     }
 
+    // Connects buttons to their click actions.
     private fun setupClickListeners() {
         binding.loginBTNDancer.setOnClickListener {
             selectedRole = Constants.UserRole.DANCER
@@ -64,6 +68,7 @@ class LoginFragment : Fragment() {
         }
     }
 
+    // Starts login with the entered credentials.
     private fun loginUser() {
         authViewModel.login(
             email = binding.loginEDTEmail.text.toString().trim(),
@@ -76,6 +81,7 @@ class LoginFragment : Fragment() {
         )
     }
 
+    // Updates the role selection buttons.
     private fun renderRoleSelection() {
         val dancerSelected = selectedRole == Constants.UserRole.DANCER
         binding.loginBTNDancer.setBackgroundResource(
@@ -88,6 +94,7 @@ class LoginFragment : Fragment() {
         binding.loginBTNStudioManager.setTypeface(null, if (dancerSelected) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
     }
 
+    // Clears the fragment binding when the view is destroyed.
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null

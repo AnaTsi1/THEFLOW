@@ -8,6 +8,7 @@ class StudioRepository {
 
     private val db = FirebaseFirestore.getInstance()
 
+    // Creates a pending studio page.
     fun createStudioPage(
         studio: Studio,
         onSuccess: () -> Unit,
@@ -26,6 +27,7 @@ class StudioRepository {
             }
     }
 
+    // Searches verified studios by location and style.
     fun searchStudios(
         location: String,
         danceStyle: String,

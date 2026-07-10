@@ -24,11 +24,13 @@ class DetailFragment : Fragment() {
     private val activityTrackingRepository = ActivityTrackingRepository()
     private val studioClaimRepository = StudioClaimRepository()
 
+    // Creates and returns the fragment view.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDetailBinding.inflate(inflater, container, false)
         return binding.root
     }
 
+    // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val itemId = requireArguments().getString(ARG_ITEM_ID).orEmpty()
         item = DiscoveryRepository.itemById(itemId)
@@ -50,6 +52,7 @@ class DetailFragment : Fragment() {
         }
     }
 
+    // Draws the screen content from current data.
     private fun render(selected: DiscoveryItem) {
         binding.detailLBLTitle.text = selected.title
         binding.detailLBLMeta.text =
@@ -85,6 +88,7 @@ class DetailFragment : Fragment() {
         }
     }
 
+    // Configures the studio claim button state.
     private fun configureClaimButton(selected: DiscoveryItem) {
         configureClaimButton(
             itemType = selected.type,
@@ -94,6 +98,7 @@ class DetailFragment : Fragment() {
         )
     }
 
+    // Configures the studio claim button state.
     private fun configureClaimButton(
         itemType: String,
         claimStatus: String,
@@ -128,6 +133,7 @@ class DetailFragment : Fragment() {
         }
     }
 
+    // Refreshes studio claim state from Firestore.
     private fun refreshClaimButtonState(selected: DiscoveryItem) {
         if (!selected.type.equals("Studio", ignoreCase = true)) return
 
@@ -149,6 +155,7 @@ class DetailFragment : Fragment() {
         )
     }
 
+    // Shows the dialog for claiming a studio.
     private fun showClaimStudioDialog(selected: DiscoveryItem) {
         val context = requireContext()
         val container = LinearLayout(context).apply {
@@ -182,6 +189,7 @@ class DetailFragment : Fragment() {
             .show()
     }
 
+    // Sends the studio claim request.
     private fun submitStudioClaim(
         selected: DiscoveryItem,
         justification: String,
@@ -210,6 +218,7 @@ class DetailFragment : Fragment() {
         )
     }
 
+    // Clears the fragment binding when the view is destroyed.
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
@@ -218,6 +227,7 @@ class DetailFragment : Fragment() {
     companion object {
         private const val ARG_ITEM_ID = "ARG_ITEM_ID"
 
+        // Handles n ew in st an ce.
         fun newInstance(itemId: String): DetailFragment {
             return DetailFragment().apply {
                 arguments = Bundle().apply {
@@ -227,6 +237,7 @@ class DetailFragment : Fragment() {
         }
     }
 
+    // Maps a discovery item type to an activity target type.
     private fun targetTypeFor(item: DiscoveryItem): String {
         return when (item.type.lowercase()) {
             "class" -> ActivityTrackingRepository.TargetTypes.CLASS
