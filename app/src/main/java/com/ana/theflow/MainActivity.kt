@@ -10,6 +10,7 @@ import androidx.fragment.app.FragmentManager
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.databinding.ActivityMainBinding
+import com.ana.theflow.ui.admin.AdminReviewFragment
 import com.ana.theflow.ui.detail.DetailFragment
 import com.ana.theflow.ui.discover.DiscoverFragment
 import com.ana.theflow.ui.home.HomeFragment
@@ -132,6 +133,12 @@ class MainActivity : AppCompatActivity() {
     fun openProfessionalVerification() {
         binding.mainLAYBottomNav.visibility = View.VISIBLE
         openFragment(ProfessionalVerificationFragment(), addToBackStack = true)
+    }
+
+    // Opens the admin review screen from Settings.
+    fun openAdminReview() {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(AdminReviewFragment(), addToBackStack = true)
     }
 
     // Opens the full media screen for the current profile.

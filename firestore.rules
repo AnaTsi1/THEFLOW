@@ -17,7 +17,7 @@ service cloud.firestore {
     function isAdmin() {
       return signedIn()
         && exists(userDoc(request.auth.uid))
-        && get(userDoc(request.auth.uid)).data.role == 'admin';
+        && get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin'];
     }
 
     function isStudioManagerRole() {

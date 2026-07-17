@@ -59,6 +59,16 @@
                 android:background="@drawable/bg_button_secondary"
                 android:text="Studio Manager"
                 android:textColor="@color/text_primary" />
+
+            <Button
+                android:id="@+id/login_BTN_admin"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_secondary"
+                android:text="Admin"
+                android:textColor="@color/text_primary" />
         </LinearLayout>
 
         <EditText

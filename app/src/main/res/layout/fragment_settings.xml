@@ -22,6 +22,20 @@
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/settings_BTN_back"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minWidth="0dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="Back"
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+
+        <Button
             android:id="@+id/settings_BTN_editPreferences"
             android:layout_width="match_parent"
             android:layout_height="50dp"
@@ -40,6 +54,17 @@
             android:text="Professional Verification"
             android:textColor="@color/text_primary"
             android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/settings_BTN_adminReview"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_primary"
+            android:text="Admin Review"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/settings_BTN_logout"

@@ -26,6 +26,9 @@ class ProfessionalVerificationFragment : Fragment() {
 
     // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        binding.verificationBTNBack.setOnClickListener {
+            parentFragmentManager.popBackStack()
+        }
         binding.verificationBTNTeacher.setOnClickListener {
             submit(Constants.ProfessionalApplicationType.VERIFIED_TEACHER)
         }

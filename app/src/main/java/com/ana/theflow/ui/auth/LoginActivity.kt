@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.databinding.ActivityLoginBinding
+import com.ana.theflow.utilities.Constants
 
 class LoginActivity : AppCompatActivity() {
 
@@ -53,7 +54,7 @@ class LoginActivity : AppCompatActivity() {
         binding.authFragmentContainer.visibility = View.GONE
         authViewModel.loadCurrentUser(
             onSuccess = { user ->
-                val destination = if (user.onboardingCompleted) {
+                val destination = if (user.role.isAdminRole() || user.onboardingCompleted) {
                     MainActivity.START_DESTINATION_HOME
                 } else {
                     MainActivity.START_DESTINATION_ONBOARDING
@@ -75,5 +76,10 @@ class LoginActivity : AppCompatActivity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun String.isAdminRole(): Boolean {
+        return equals(Constants.UserRole.ADMIN.name, ignoreCase = true) ||
+            equals(Constants.UserRole.ADMIN.firestoreValue, ignoreCase = true)
     }
 }

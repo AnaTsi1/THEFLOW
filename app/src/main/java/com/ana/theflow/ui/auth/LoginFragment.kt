@@ -58,6 +58,11 @@ class LoginFragment : Fragment() {
             renderRoleSelection()
         }
 
+        binding.loginBTNAdmin.setOnClickListener {
+            selectedRole = Constants.UserRole.ADMIN
+            renderRoleSelection()
+        }
+
         binding.loginBTNLogin.setOnClickListener {
             loginUser()
         }
@@ -84,14 +89,20 @@ class LoginFragment : Fragment() {
     // Updates the role selection buttons.
     private fun renderRoleSelection() {
         val dancerSelected = selectedRole == Constants.UserRole.DANCER
+        val studioSelected = selectedRole == Constants.UserRole.STUDIO_MANAGER
+        val adminSelected = selectedRole == Constants.UserRole.ADMIN
         binding.loginBTNDancer.setBackgroundResource(
             if (dancerSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
         )
         binding.loginBTNStudioManager.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_button_secondary else com.ana.theflow.R.drawable.bg_button_primary
+            if (studioSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+        )
+        binding.loginBTNAdmin.setBackgroundResource(
+            if (adminSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
         )
         binding.loginBTNDancer.setTypeface(null, if (dancerSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-        binding.loginBTNStudioManager.setTypeface(null, if (dancerSelected) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
+        binding.loginBTNStudioManager.setTypeface(null, if (studioSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        binding.loginBTNAdmin.setTypeface(null, if (adminSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
     }
 
     // Clears the fragment binding when the view is destroyed.

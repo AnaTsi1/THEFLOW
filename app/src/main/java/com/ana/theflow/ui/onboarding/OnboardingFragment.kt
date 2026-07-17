@@ -29,6 +29,9 @@ class OnboardingFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         CityOptions.configureCitySelector(requireContext(), binding.onboardingEDTLocation)
         configureMode()
+        binding.onboardingBTNBack.setOnClickListener {
+            parentFragmentManager.popBackStack()
+        }
         binding.onboardingBTNContinue.setOnClickListener {
             savePreferences()
         }
@@ -41,6 +44,7 @@ class OnboardingFragment : Fragment() {
         binding.onboardingLBLTitle.text = "Edit Preferences"
         binding.onboardingLBLSubtitle.text = "Update your city, interests, and recommendation preferences."
         binding.onboardingBTNContinue.text = "Save Preferences"
+        binding.onboardingBTNBack.visibility = View.VISIBLE
         loadExistingPreferences()
     }
 
