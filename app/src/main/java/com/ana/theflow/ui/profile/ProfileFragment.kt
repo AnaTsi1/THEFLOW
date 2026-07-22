@@ -99,6 +99,9 @@ class ProfileFragment : Fragment() {
         binding.profileBTNSettings.setOnClickListener {
             (requireActivity() as MainActivity).openSettings()
         }
+        binding.profileBTNSavedItems.setOnClickListener {
+            (requireActivity() as MainActivity).openSavedItems()
+        }
         binding.profileBTNCreatePost.setOnClickListener {
             createPost()
         }

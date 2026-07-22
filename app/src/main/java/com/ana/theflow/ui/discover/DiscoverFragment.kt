@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
 import com.ana.theflow.data.model.discovery.DiscoveryItem
@@ -31,6 +32,17 @@ class DiscoverFragment : Fragment() {
         }
         binding.discoverLBLExplanation.text = "Loading studios..."
         render()
+        DiscoveryRepository.loadSavedItems(
+            onSuccess = {
+                if (_binding != null) render()
+            },
+            onFailure = { error ->
+                if (_binding != null) {
+                    Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                    render()
+                }
+            }
+        )
         DiscoveryRepository.loadApprovedStudios(
             onSuccess = {
                 if (_binding != null) render()
@@ -67,8 +79,20 @@ class DiscoverFragment : Fragment() {
             explanation = DiscoveryRepository.explanationFor(item),
             onOpen = { (requireActivity() as MainActivity).openDetail(it) },
             onSave = {
-                DiscoveryRepository.trackSave(it)
-                render()
+                DiscoveryRepository.saveItem(
+                    item = it,
+                    onSuccess = {
+                        if (_binding != null) {
+                            Toast.makeText(requireContext(), "Saved", Toast.LENGTH_SHORT).show()
+                            render()
+                        }
+                    },
+                    onFailure = { error ->
+                        if (_binding != null) {
+                            Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                )
             }
         )
     }

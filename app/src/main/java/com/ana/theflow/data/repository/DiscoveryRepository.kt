@@ -3,12 +3,15 @@ package com.ana.theflow.data.repository
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 object DiscoveryRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val activityTrackingRepository = ActivityTrackingRepository()
     private var firebaseItems: List<DiscoveryItem> = emptyList()
 
     val seedItems = listOf(
@@ -79,6 +82,148 @@ object DiscoveryRepository {
 
     // Checks whether an item is saved locally.
     fun isSaved(item: DiscoveryItem): Boolean = savedItemIds.contains(item.id)
+
+    // Loads saved discovery item ids for the current user.
+    fun loadSavedItems(
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection("savedItems")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                savedItemIds.clear()
+                snapshot.documents.forEach { document ->
+                    val itemId = document.getString("itemId").orEmpty().ifBlank { document.id }
+                    savedItemIds.add(itemId)
+                }
+                onSuccess()
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load saved items")
+            }
+    }
+
+    // Loads full saved discovery items for the current user.
+    fun loadSavedDiscoveryItems(
+        onSuccess: (List<DiscoveryItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection("savedItems")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                savedItemIds.clear()
+                val savedItems = snapshot.documents.mapNotNull { document ->
+                    val itemId = document.getString("itemId").orEmpty().ifBlank { document.id }
+                    savedItemIds.add(itemId)
+                    DiscoveryItem(
+                        id = itemId,
+                        title = document.getString("title").orEmpty(),
+                        studio = document.getString("studio").orEmpty(),
+                        teacher = document.getString("teacher").orEmpty(),
+                        style = document.getString("style").orEmpty(),
+                        level = document.getString("level").orEmpty(),
+                        location = document.getString("location").orEmpty(),
+                        time = document.getString("time").orEmpty(),
+                        type = document.getString("itemType").orEmpty().ifBlank { "Discovery item" }
+                    )
+                }
+                rememberItems(savedItems)
+                onSuccess(savedItems)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load saved items")
+            }
+    }
+
+    // Saves a discovery item permanently for the current user and updates recommendations.
+    fun saveItem(
+        item: DiscoveryItem,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        val savedItem = mapOf(
+            "itemId" to item.id,
+            "itemType" to item.type.ifBlank { "Discovery item" },
+            "title" to item.title,
+            "studio" to item.studio,
+            "teacher" to item.teacher,
+            "style" to item.style,
+            "level" to item.level,
+            "location" to item.location,
+            "time" to item.time,
+            "savedAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection("savedItems")
+            .document(item.id)
+            .set(savedItem, SetOptions.merge())
+            .addOnSuccessListener {
+                trackSave(item)
+                activityTrackingRepository.trackSaveItem(
+                    targetType = targetTypeFor(item),
+                    targetId = item.id,
+                    targetName = item.title,
+                    danceStyles = listOf(item.style).filter { it.isNotBlank() },
+                    location = item.location,
+                    interactionStrength = 1.0
+                )
+                onSuccess()
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to save item")
+            }
+    }
+
+    // Removes a saved discovery item for the current user.
+    fun unsaveItem(
+        item: DiscoveryItem,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection("savedItems")
+            .document(item.id)
+            .delete()
+            .addOnSuccessListener {
+                savedItemIds.remove(item.id)
+                onSuccess()
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to unsave item")
+            }
+    }
 
     // Returns discovery items ranked for the user.
     fun recommendedItems(): List<DiscoveryItem> {
@@ -159,6 +304,16 @@ object DiscoveryRepository {
     // Finds a discovery item by id.
     fun itemById(id: String): DiscoveryItem? {
         return allItems().firstOrNull { it.id == id }
+    }
+
+    // Adds items to the temporary in-app cache so saved items can open in Detail.
+    fun rememberItems(items: List<DiscoveryItem>) {
+        if (items.isEmpty()) return
+        val existingById = firebaseItems.associateBy { it.id }.toMutableMap()
+        items.forEach { item ->
+            if (item.id.isNotBlank()) existingById[item.id] = item
+        }
+        firebaseItems = existingById.values.toList()
     }
 
     // Loads approved studio data from Firestore.
@@ -267,6 +422,18 @@ object DiscoveryRepository {
     // Returns Firestore items or seed items when none are loaded.
     private fun allItems(): List<DiscoveryItem> {
         return firebaseItems.ifEmpty { seedItems }
+    }
+
+    // Maps a discovery item to the activity target type stored in Firebase.
+    private fun targetTypeFor(item: DiscoveryItem): String {
+        return when (item.type.lowercase()) {
+            "studio" -> ActivityTrackingRepository.TargetTypes.STUDIO
+            "class" -> ActivityTrackingRepository.TargetTypes.CLASS
+            "workshop" -> ActivityTrackingRepository.TargetTypes.WORKSHOP
+            "audition" -> ActivityTrackingRepository.TargetTypes.AUDITION
+            "event" -> ActivityTrackingRepository.TargetTypes.EVENT
+            else -> ActivityTrackingRepository.TargetTypes.DISCOVERY_ITEM
+        }
     }
 
     // Returns the first non-empty string field from a document.

@@ -18,6 +18,7 @@ import com.ana.theflow.ui.media.MediaViewerFragment
 import com.ana.theflow.ui.onboarding.OnboardingFragment
 import com.ana.theflow.ui.profile.ProfileMediaFragment
 import com.ana.theflow.ui.profile.ProfileFragment
+import com.ana.theflow.ui.profile.SavedItemsFragment
 import com.ana.theflow.ui.search.SearchFragment
 import com.ana.theflow.ui.settings.ProfessionalVerificationFragment
 import com.ana.theflow.ui.settings.SettingsFragment
@@ -145,6 +146,12 @@ class MainActivity : AppCompatActivity() {
     fun openProfileMedia() {
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(ProfileMediaFragment(), addToBackStack = true)
+    }
+
+    // Opens the saved discovery items screen.
+    fun openSavedItems() {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(SavedItemsFragment(), addToBackStack = true)
     }
 
     // Opens one photo or video in a larger viewer.

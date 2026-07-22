@@ -98,6 +98,16 @@
 
         </LinearLayout>
 
+        <Button
+            android:id="@+id/profile_BTN_savedItems"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_button_secondary"
+            android:text="Saved Items"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+
         <LinearLayout
             android:id="@+id/profile_LAY_sections"
             android:layout_width="match_parent"

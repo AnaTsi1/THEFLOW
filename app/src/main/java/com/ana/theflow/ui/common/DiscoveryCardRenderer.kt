@@ -92,12 +92,15 @@ object DiscoveryCardRenderer {
         })
 
         actions.addView(Button(context).apply {
-            text = if (DiscoveryRepository.isSaved(item)) "Saved" else "Save"
+            val isSaved = DiscoveryRepository.isSaved(item)
+            text = if (isSaved) "Saved" else "Save"
+            isEnabled = !isSaved
             setTextColor(context.getColor(R.color.text_primary))
             setBackgroundResource(R.drawable.bg_button_secondary)
             setOnClickListener {
                 onSave(item)
                 text = "Saved"
+                isEnabled = false
             }
             layoutParams = LinearLayout.LayoutParams(0, 48.dp(), 1f).apply {
                 leftMargin = 10.dp()

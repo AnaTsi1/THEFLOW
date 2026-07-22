@@ -59,17 +59,26 @@ class DetailFragment : Fragment() {
             "${selected.studio} / ${selected.teacher}\n${selected.style} / ${selected.level} / ${selected.location}"
         binding.detailLBLSchedule.text =
             "Schedule\n${selected.time}\n\nThis detail view is ready for Firestore-backed class and studio data."
+        binding.detailBTNSave.text = if (DiscoveryRepository.isSaved(selected)) "Saved" else "Save"
+        binding.detailBTNSave.isEnabled = !DiscoveryRepository.isSaved(selected)
 
         binding.detailBTNSave.setOnClickListener {
-            DiscoveryRepository.trackSave(selected)
-            activityTrackingRepository.trackSaveItem(
-                targetType = targetTypeFor(selected),
-                targetId = selected.id,
-                targetName = selected.title,
-                danceStyles = listOf(selected.style),
-                location = selected.location
+            binding.detailBTNSave.isEnabled = false
+            binding.detailBTNSave.text = "Saving..."
+            DiscoveryRepository.saveItem(
+                item = selected,
+                onSuccess = {
+                    if (_binding == null) return@saveItem
+                    binding.detailBTNSave.text = "Saved"
+                    Toast.makeText(requireContext(), "Saved", Toast.LENGTH_SHORT).show()
+                },
+                onFailure = { error ->
+                    if (_binding == null) return@saveItem
+                    binding.detailBTNSave.isEnabled = true
+                    binding.detailBTNSave.text = "Save"
+                    Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                }
             )
-            binding.detailBTNSave.text = "Saved"
         }
         binding.detailBTNFollow.setOnClickListener {
             DiscoveryRepository.trackSave(selected)
@@ -240,6 +249,7 @@ class DetailFragment : Fragment() {
     // Maps a discovery item type to an activity target type.
     private fun targetTypeFor(item: DiscoveryItem): String {
         return when (item.type.lowercase()) {
+            "studio" -> ActivityTrackingRepository.TargetTypes.STUDIO
             "class" -> ActivityTrackingRepository.TargetTypes.CLASS
             "workshop" -> ActivityTrackingRepository.TargetTypes.WORKSHOP
             "audition" -> ActivityTrackingRepository.TargetTypes.AUDITION
