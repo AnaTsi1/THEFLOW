@@ -35,19 +35,6 @@ class DetailFragment : Fragment() {
         val itemId = requireArguments().getString(ARG_ITEM_ID).orEmpty()
         item = DiscoveryRepository.itemById(itemId)
         item?.let { selected ->
-            DiscoveryRepository.trackOpen(selected)
-            activityTrackingRepository.trackOpenDiscoveryItem(
-                itemId = selected.id,
-                itemName = selected.title,
-                targetType = targetTypeFor(selected),
-                danceStyles = listOf(selected.style),
-                location = selected.location,
-                metadata = mapOf(
-                    "studio" to selected.studio,
-                    "teacher" to selected.teacher,
-                    "level" to selected.level
-                )
-            )
             render(selected)
         }
     }
@@ -246,15 +233,4 @@ class DetailFragment : Fragment() {
         }
     }
 
-    // Maps a discovery item type to an activity target type.
-    private fun targetTypeFor(item: DiscoveryItem): String {
-        return when (item.type.lowercase()) {
-            "studio" -> ActivityTrackingRepository.TargetTypes.STUDIO
-            "class" -> ActivityTrackingRepository.TargetTypes.CLASS
-            "workshop" -> ActivityTrackingRepository.TargetTypes.WORKSHOP
-            "audition" -> ActivityTrackingRepository.TargetTypes.AUDITION
-            "event" -> ActivityTrackingRepository.TargetTypes.EVENT
-            else -> ActivityTrackingRepository.TargetTypes.DISCOVERY_ITEM
-        }
-    }
 }

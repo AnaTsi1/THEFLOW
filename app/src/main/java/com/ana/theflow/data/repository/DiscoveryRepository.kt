@@ -64,12 +64,40 @@ object DiscoveryRepository {
         }
     }
 
-    // Updates local recommendation state when an item is opened.
-    fun trackOpen(item: DiscoveryItem) {
+    // Tracks a Discover search in local recommendations and Firebase activity history.
+    fun trackDiscoverSearch(query: String, style: String, location: String) {
+        trackSearch(style, location)
+
+        val searchText = listOf(query, style, location)
+            .filter { it.isNotBlank() }
+            .joinToString(" / ")
+
+        activityTrackingRepository.trackSearch(
+            query = searchText.ifBlank { "empty_query" },
+            danceStyles = listOf(style).filter { it.isNotBlank() },
+            location = location
+        )
+    }
+
+    // Tracks that a discovery item was opened and updates recommendations.
+    fun trackOpenItem(item: DiscoveryItem) {
         styleScores[item.style] = (styleScores[item.style] ?: 0) + 2
         studioScores[item.studio] = (studioScores[item.studio] ?: 0) + 2
         teacherScores[item.teacher] = (teacherScores[item.teacher] ?: 0) + 1
         lastReason = "Because you viewed ${item.style} classes"
+
+        activityTrackingRepository.trackOpenDiscoveryItem(
+            itemId = item.id,
+            itemName = item.title,
+            targetType = targetTypeFor(item),
+            danceStyles = listOf(item.style).filter { it.isNotBlank() },
+            location = item.location,
+            metadata = mapOf(
+                "studio" to item.studio,
+                "teacher" to item.teacher,
+                "level" to item.level
+            ).filterValues { it.isNotBlank() }
+        )
     }
 
     // Updates local recommendation state when an item is saved.
@@ -366,6 +394,32 @@ object DiscoveryRepository {
             }
     }
 
+    // Filters discovery items for the Discover screen.
+    fun filterDiscoverItems(
+        query: String,
+        style: String,
+        level: String,
+        location: String
+    ): List<DiscoveryItem> {
+        val normalizedQuery = query.trim()
+        return allItems().filter { item ->
+            item.matches(style, item.style) &&
+                item.matchesLevel(level) &&
+                item.matches(location, item.location) &&
+                (
+                    normalizedQuery.isBlank() ||
+                        item.title.contains(normalizedQuery, ignoreCase = true) ||
+                        item.studio.contains(normalizedQuery, ignoreCase = true) ||
+                        item.teacher.contains(normalizedQuery, ignoreCase = true) ||
+                        item.style.contains(normalizedQuery, ignoreCase = true) ||
+                        item.level.contains(normalizedQuery, ignoreCase = true) ||
+                        item.location.contains(normalizedQuery, ignoreCase = true) ||
+                        item.time.contains(normalizedQuery, ignoreCase = true) ||
+                        item.type.contains(normalizedQuery, ignoreCase = true)
+                    )
+        }
+    }
+
     // Returns the recommendation explanation for an item.
     fun explanationFor(item: DiscoveryItem): String {
         return recommendationResults()
@@ -417,6 +471,13 @@ object DiscoveryRepository {
     // Checks whether a value matches a search query.
     private fun DiscoveryItem.matches(query: String, value: String): Boolean {
         return query.isBlank() || value.contains(query, ignoreCase = true)
+    }
+
+    // Checks whether an item matches the selected level filter.
+    private fun DiscoveryItem.matchesLevel(query: String): Boolean {
+        if (query.isBlank()) return true
+        return level.equals(query, ignoreCase = true) ||
+            level.equals("All levels", ignoreCase = true)
     }
 
     // Returns Firestore items or seed items when none are loaded.
