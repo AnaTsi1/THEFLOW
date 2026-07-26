@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.repository.AuthRepository
+import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.MessagingRepository
 import com.ana.theflow.data.repository.NotificationRepository
 import com.ana.theflow.databinding.ActivityMainBinding
@@ -227,6 +228,7 @@ class MainActivity : AppCompatActivity() {
 
     // Opens the detail screen for a selected item.
     fun openDetail(item: DiscoveryItem) {
+        DiscoveryRepository.trackOpenItem(item)
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(DetailFragment.newInstance(item.id), addToBackStack = true)
     }

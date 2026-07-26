@@ -44,6 +44,8 @@
                 android:layout_weight="1"
                 android:background="@android:color/transparent"
                 android:hint="@string/discover_search_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
                 android:singleLine="true"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_muted" />
@@ -112,45 +114,100 @@
             android:padding="12dp"
             android:visibility="gone">
 
-            <EditText
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <AutoCompleteTextView
+                    android:id="@+id/discover_EDT_style"
+                    android:layout_width="0dp"
+                    android:layout_height="50dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_input"
+                    android:hint="Style"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <AutoCompleteTextView
+                    android:id="@+id/discover_EDT_level"
+                    android:layout_width="0dp"
+                    android:layout_height="50dp"
+                    android:layout_marginLeft="10dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_input"
+                    android:hint="Level"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+            </LinearLayout>
+
+            <AutoCompleteTextView
                 android:id="@+id/discover_EDT_location"
                 android:layout_width="match_parent"
-                android:layout_height="46dp"
+                android:layout_height="50dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_input"
                 android:hint="Location"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
-
-            <EditText
-                android:id="@+id/discover_EDT_style"
-                android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_input"
-                android:hint="Style"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
-
-            <EditText
-                android:id="@+id/discover_EDT_level"
-                android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_input"
-                android:hint="Level"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_muted" />
 
             <EditText
                 android:id="@+id/discover_EDT_time"
                 android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:layout_marginTop="8dp"
+                android:layout_height="50dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_input"
                 android:hint="Time"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_muted" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/discover_BTN_apply_filters"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_primary"
+                    android:text="Apply"
+                    android:textColor="@color/text_primary" />
+
+                <Button
+                    android:id="@+id/discover_BTN_clear_filters"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="10dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_secondary"
+                    android:text="Clear"
+                    android:textColor="@color/text_primary" />
+
+            </LinearLayout>
+
         </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/discover_PRG_searching"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="14dp"
+            android:indeterminate="true"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/discover_LBL_search_results_title"
@@ -170,6 +227,7 @@
             android:orientation="vertical" />
 
         <TextView
+            android:id="@+id/discover_LBL_recommended_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
@@ -185,6 +243,7 @@
             android:orientation="vertical" />
 
         <TextView
+            android:id="@+id/discover_LBL_popular_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"

@@ -5,9 +5,14 @@ import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 
 class ActivityTrackingRepository {
+
+    private companion object {
+        const val MAX_USER_ACTIVITY_EVENTS = 50L
+    }
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
@@ -58,6 +63,7 @@ class ActivityTrackingRepository {
                     weight = finalWeight,
                     onFailure = onFailure
                 )
+                pruneOldActivityEvents(uid)
             }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to track activity")
@@ -269,7 +275,23 @@ class ActivityTrackingRepository {
                 onFailure(error.message ?: "Failed to update recommendation profile")
             }
     }
+    // Keeps only the newest activity events for a user so raw behavior data does not grow forever.
+    private fun pruneOldActivityEvents(uid: String) {
+        db.collection(Constants.Collections.USER_ACTIVITY_EVENTS)
+            .whereEqualTo("userId", uid)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val oldEvents = snapshot.documents.drop(MAX_USER_ACTIVITY_EVENTS.toInt())
+                if (oldEvents.isEmpty()) return@addOnSuccessListener
 
+                val batch = db.batch()
+                oldEvents.forEach { document ->
+                    batch.delete(document.reference)
+                }
+                batch.commit()
+            }
+    }
     // Returns the recommendation weight for an event type.
     private fun weightFor(eventType: String): Int {
         return when (eventType) {
