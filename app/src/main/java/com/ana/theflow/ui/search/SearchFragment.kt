@@ -10,6 +10,7 @@ import com.ana.theflow.MainActivity
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
+import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.databinding.FragmentSearchBinding
 import com.ana.theflow.ui.common.DiscoveryCardRenderer
 import com.ana.theflow.utilities.CityOptions
@@ -27,8 +28,10 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     private var _binding: FragmentSearchBinding? = null
     private val binding get() = _binding!!
     private val activityTrackingRepository = ActivityTrackingRepository()
+    private val userRepository = UserRepository()
     private var googleMap: GoogleMap? = null
     private var currentResults: List<DiscoveryItem> = emptyList()
+    private var lastExternalSearchKey: String = ""
 
     // Creates and returns the fragment view.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -58,7 +61,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         binding.searchBTNMapApply.setOnClickListener {
             runMapFilter()
         }
-        renderRecommendedResults()
+        loadUserPreferences()
         DiscoveryRepository.loadApprovedStudios(
             onSuccess = {
                 if (_binding != null) renderRecommendedResults()
@@ -68,6 +71,25 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
                     binding.searchLBLResultSummary.text = error
                     renderRecommendedResults()
                 }
+            }
+        )
+    }
+
+    private fun loadUserPreferences() {
+        userRepository.loadPreferenceSettings(
+            onSuccess = { settings ->
+                DiscoveryRepository.hydratePreferences(
+                    styles = settings.styles,
+                    level = settings.level,
+                    location = settings.location,
+                    preferredStudios = settings.preferredStudios,
+                    preferredTeachers = settings.preferredTeachers,
+                    preferredDancers = settings.preferredDancers
+                )
+                if (_binding != null) renderRecommendedResults()
+            },
+            onFailure = {
+                if (_binding != null) renderRecommendedResults()
             }
         )
     }
@@ -113,6 +135,11 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             location = location
         )
         renderResults(results, "Search results", "Search results")
+        loadExternalSearchResults(
+            query = listOf(query, style, binding.searchEDTStudio.text.toString()).filter { it.isNotBlank() }.joinToString(" "),
+            city = location,
+            label = "Search results"
+        )
     }
 
     // Runs a simple text search.
@@ -130,6 +157,11 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             items = results,
             label = if (query.isBlank()) "Recommended from your dance profile" else "Search results",
             title = if (query.isBlank()) "Recommended search" else "Search results"
+        )
+        loadExternalSearchResults(
+            query = query,
+            city = "",
+            label = if (query.isBlank()) "Recommended from your dance profile" else "Search results"
         )
     }
 
@@ -163,6 +195,43 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         )
 
         renderResults(results, "Map filtered results", "Search results")
+        loadExternalSearchResults(
+            query = style,
+            city = location,
+            label = "Map filtered results"
+        )
+    }
+
+    private fun loadExternalSearchResults(query: String, city: String, label: String) {
+        val key = "${query.trim()}|${city.trim()}"
+        if (key == lastExternalSearchKey) return
+        lastExternalSearchKey = key
+        DiscoveryRepository.loadExternalStudios(
+            context = requireContext(),
+            query = query,
+            city = city,
+            location = null,
+            onSuccess = {
+                if (_binding == null) return@loadExternalStudios
+                val results = if (query.isBlank() && city.isBlank()) {
+                    DiscoveryRepository.recommendedItems()
+                } else {
+                    DiscoveryRepository.search(
+                        style = "",
+                        level = "",
+                        location = city,
+                        teacher = "",
+                        studio = "",
+                        time = ""
+                    ).filterByFreeText(query)
+                }
+                renderResults(results, label, "Search results")
+            },
+            onFailure = {
+                if (_binding == null) return@loadExternalStudios
+                binding.searchLBLResultSummary.text = "$label / ${currentResults.size} results / external search unavailable"
+            }
+        )
     }
 
     // Shows search results in the list and map.

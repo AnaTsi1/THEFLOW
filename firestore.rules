@@ -102,6 +102,25 @@ service cloud.firestore {
       return resource.data.verified == true || resource.data.status == 'APPROVED';
     }
 
+    function isConversationParticipant(conversationId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/conversations/$(conversationId))
+        && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+    }
+
+    function isAllowedNotificationType(type) {
+      return type in [
+        'like',
+        'comment',
+        'follow',
+        'private_message',
+        'professional_approved',
+        'professional_rejected',
+        'event_updated',
+        'event_recommended'
+      ];
+    }
+
     match /users/{uid} {
       allow get: if signedIn();
       allow list: if isAdmin();
@@ -128,6 +147,22 @@ service cloud.firestore {
       match /followers/{followerId} {
         allow read: if signedIn();
         allow create, update, delete: if isOwner(uid) || isOwner(followerId) || isAdmin();
+      }
+
+      match /notifications/{notificationId} {
+        allow get, list: if isOwner(uid) || isAdmin();
+        allow create: if signedIn()
+          && request.resource.data.actorId == request.auth.uid
+          && request.auth.uid != uid
+          && request.resource.data.type is string
+          && isAllowedNotificationType(request.resource.data.type)
+          && request.resource.data.title is string
+          && request.resource.data.message is string
+          && request.resource.data.isRead == false;
+        allow update: if isOwner(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+          && request.resource.data.isRead == true;
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /savedPosts/{savedId} {
@@ -186,7 +221,13 @@ service cloud.firestore {
       allow list: if signedIn();
       allow create: if createsStudioDraft() || isAdmin();
       allow update: if isAdmin()
-        || isStudioOwnerOrManager()
+        || (
+          isStudioOwnerOrManager()
+          && unchanged('googlePlaceId')
+          && unchanged('externalSource')
+          && unchanged('claimStatus')
+          && unchanged('claimUpdatedAt')
+        )
         || (
           isStudioManagerRole()
           && isVisibleStudio()
@@ -219,8 +260,22 @@ service cloud.firestore {
         && request.resource.data.requesterUid == request.auth.uid
         && request.resource.data.status == 'PENDING'
         && request.resource.data.studioId is string
-        && request.resource.data.studioId != '';
-      allow update, delete: if isAdmin();
+        && request.resource.data.studioId != ''
+        && (
+          !('googlePlaceId' in request.resource.data)
+          || request.resource.data.googlePlaceId is string
+        );
+      allow update: if isAdmin()
+        && resource.data.requesterUid != request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /externalStudios/{placeId} {
+      allow get, list: if signedIn();
+      allow create, update: if isAdmin()
+        && request.resource.data.googlePlaceId == placeId
+        && request.resource.data.source == 'google';
+      allow delete: if isAdmin();
     }
 
     match /professionalApplications/{applicationId} {
@@ -273,6 +328,37 @@ service cloud.firestore {
         && request.resource.data.eventType is string
         && request.resource.data.targetType is string;
       allow update, delete: if isAdmin();
+    }
+
+    match /conversations/{conversationId} {
+      allow get, list: if signedIn()
+        && request.auth.uid in resource.data.participantIds;
+      allow create: if signedIn()
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() == 2
+        && request.auth.uid in request.resource.data.participantIds
+        && request.resource.data.conversationId == conversationId;
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.participantIds
+        && request.resource.data.participantIds == resource.data.participantIds
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['lastMessage', 'lastMessageAt', 'lastSenderId', 'unreadCounts', 'updatedAt', 'participantInfo']);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow get, list: if isConversationParticipant(conversationId);
+        allow create: if isConversationParticipant(conversationId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.type == 'text';
+        allow update: if isConversationParticipant(conversationId)
+          && request.resource.data.senderId == resource.data.senderId
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']);
+        allow delete: if false;
+      }
     }
 
     match /{document=**} {

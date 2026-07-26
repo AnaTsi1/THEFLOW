@@ -1,6 +1,7 @@
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.professional.ProfessionalApplication
+import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.studio.StudioClaim
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.Timestamp
@@ -13,6 +14,7 @@ class AdminRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val notificationRepository = NotificationRepository()
 
     // Loads pending studio claims and professional applications for admin review.
     fun loadPendingReviews(
@@ -92,7 +94,12 @@ class AdminRepository {
                 }
 
                 val claimRef = db.collection(Constants.Collections.STUDIO_CLAIMS).document(claim.id)
-                val studioRef = db.collection(Constants.Collections.STUDIOS).document(claim.studioId)
+                val isExternalClaim = claim.googlePlaceId.isNotBlank() && claim.studioId.startsWith("google_")
+                val studioRef = if (isExternalClaim) {
+                    db.collection(Constants.Collections.STUDIOS).document()
+                } else {
+                    db.collection(Constants.Collections.STUDIOS).document(claim.studioId)
+                }
                 val userRef = db.collection(Constants.Collections.USERS).document(claim.requesterUid)
 
                 db.runBatch { batch ->
@@ -104,18 +111,52 @@ class AdminRepository {
                             "reviewedByUid" to adminUid
                         )
                     )
-                    batch.set(
-                        studioRef,
-                        mapOf(
-                            "ownerUid" to claim.requesterUid,
-                            "managerUids" to FieldValue.arrayUnion(claim.requesterUid),
-                            "claimStatus" to "CLAIMED",
-                            "claimUpdatedAt" to Timestamp.now(),
-                            "status" to Constants.StudioStatus.APPROVED.name,
-                            "verified" to true
-                        ),
-                        SetOptions.merge()
-                    )
+                    if (isExternalClaim) {
+                        batch.set(
+                            studioRef,
+                            mapOf(
+                                "id" to studioRef.id,
+                                "displayName" to claim.studioName,
+                                "address" to claim.address,
+                                "city" to "",
+                                "location" to claim.address,
+                                "ownerUid" to claim.requesterUid,
+                                "managerUids" to listOf(claim.requesterUid),
+                                "googlePlaceId" to claim.googlePlaceId,
+                                "externalSource" to "google",
+                                "claimStatus" to "CLAIMED",
+                                "claimUpdatedAt" to FieldValue.serverTimestamp(),
+                                "status" to Constants.StudioStatus.APPROVED.name,
+                                "verified" to true
+                            ),
+                            SetOptions.merge()
+                        )
+                        batch.set(
+                            db.collection(Constants.Collections.EXTERNAL_STUDIOS).document(claim.googlePlaceId),
+                            mapOf(
+                                "googlePlaceId" to claim.googlePlaceId,
+                                "source" to "google",
+                                "claimedStudioId" to studioRef.id,
+                                "claimStatus" to "CLAIMED",
+                                "discoveredAt" to FieldValue.serverTimestamp(),
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            ),
+                            SetOptions.merge()
+                        )
+                    } else {
+                        batch.set(
+                            studioRef,
+                            mapOf(
+                                "ownerUid" to claim.requesterUid,
+                                "managerUids" to FieldValue.arrayUnion(claim.requesterUid),
+                                "claimStatus" to "CLAIMED",
+                                "claimUpdatedAt" to Timestamp.now(),
+                                "status" to Constants.StudioStatus.APPROVED.name,
+                                "verified" to true
+                            ),
+                            SetOptions.merge()
+                        )
+                    }
                     batch.set(
                         userRef,
                         mapOf(
@@ -126,7 +167,9 @@ class AdminRepository {
                         SetOptions.merge()
                     )
                 }
-                    .addOnSuccessListener { onSuccess() }
+                    .addOnSuccessListener {
+                        onSuccess()
+                    }
                     .addOnFailureListener { error ->
                         onFailure(error.message ?: "Failed to approve studio claim")
                     }
@@ -209,7 +252,10 @@ class AdminRepository {
                     )
                     batch.set(userRef, userUpdates, SetOptions.merge())
                 }
-                    .addOnSuccessListener { onSuccess() }
+                    .addOnSuccessListener {
+                        notifyProfessionalApplication(application, adminUid, approved = true)
+                        onSuccess()
+                    }
                     .addOnFailureListener { error ->
                         onFailure(error.message ?: "Failed to approve application")
                     }
@@ -240,7 +286,10 @@ class AdminRepository {
                             "reviewedByUid" to adminUid
                         )
                     )
-                    .addOnSuccessListener { onSuccess() }
+                    .addOnSuccessListener {
+                        notifyProfessionalApplication(application, adminUid, approved = false)
+                        onSuccess()
+                    }
                     .addOnFailureListener { error ->
                         onFailure(error.message ?: "Failed to reject application")
                     }
@@ -295,6 +344,36 @@ class AdminRepository {
                     "professionalBadges" to FieldValue.arrayUnion("Studio / Dance School")
                 )
             }
+        }
+    }
+
+    private fun notifyProfessionalApplication(
+        application: ProfessionalApplication,
+        adminUid: String,
+        approved: Boolean
+    ) {
+        val type = if (approved) {
+            InAppNotification.Types.PROFESSIONAL_APPROVED
+        } else {
+            InAppNotification.Types.PROFESSIONAL_REJECTED
+        }
+        val statusText = if (approved) "approved" else "rejected"
+        notificationRepository.createNotification(
+            recipientUid = application.applicantUid,
+            type = type,
+            actorId = adminUid,
+            applicationId = application.applicationId,
+            title = "Application $statusText",
+            message = "Your ${applicationTypeLabel(application.applicationType)} application was $statusText.",
+            dedupeId = "professional_${application.applicationId}_$statusText"
+        )
+    }
+
+    private fun applicationTypeLabel(type: String): String {
+        return when {
+            type.equals(Constants.ProfessionalApplicationType.VERIFIED_TEACHER.firestoreValue, ignoreCase = true) -> "Verified Teacher"
+            type.equals(Constants.ProfessionalApplicationType.CHOREOGRAPHER.firestoreValue, ignoreCase = true) -> "Choreographer"
+            else -> "Studio / Dance School"
         }
     }
 

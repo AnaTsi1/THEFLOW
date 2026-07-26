@@ -120,6 +120,42 @@ class UserRepository {
             }
     }
 
+    fun searchUsers(
+        query: String,
+        dancersOnly: Boolean,
+        onSuccess: (List<User>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val normalizedQuery = query.trim()
+        db.collection(Constants.Collections.USERS)
+            .limit(80)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val users = snapshot.documents.mapNotNull { document ->
+                    document.toObject(User::class.java)?.copy(uid = document.id)
+                }.filter { user ->
+                    val isDancer = user.role.equals(Constants.UserRole.DANCER.firestoreValue, ignoreCase = true) &&
+                        !user.verifiedTeacher &&
+                        !user.verifiedChoreographer
+                    (!dancersOnly || isDancer) &&
+                        (
+                            normalizedQuery.isBlank() ||
+                                "${user.firstName} ${user.lastName}".contains(normalizedQuery, ignoreCase = true) ||
+                                user.headline.contains(normalizedQuery, ignoreCase = true) ||
+                                user.danceStyles.any { it.contains(normalizedQuery, ignoreCase = true) } ||
+                                user.location.contains(normalizedQuery, ignoreCase = true)
+                            )
+                }.sortedWith(
+                    compareByDescending<User> { it.verifiedTeacher || it.verifiedChoreographer }
+                        .thenBy { "${it.firstName} ${it.lastName}" }
+                )
+                onSuccess(users)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to search users")
+            }
+    }
+
     // Loads private feed preferences for the current user.
     fun loadPreferenceSettings(
         onSuccess: (PreferenceSettings) -> Unit,

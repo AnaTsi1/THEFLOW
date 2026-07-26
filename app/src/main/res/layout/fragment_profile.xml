@@ -20,21 +20,21 @@
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card_highlight"
             android:orientation="vertical"
-            android:padding="18dp">
+            android:padding="16dp">
 
             <ImageView
                 android:id="@+id/profile_IMG_cover"
                 android:layout_width="match_parent"
-                android:layout_height="110dp"
+                android:layout_height="124dp"
                 android:background="@drawable/bg_media_gradient"
                 android:contentDescription="Cover image"
                 android:scaleType="centerCrop" />
 
             <ImageView
                 android:id="@+id/profile_IMG_avatar"
-                android:layout_width="84dp"
-                android:layout_height="84dp"
-                android:layout_marginTop="-30dp"
+                android:layout_width="88dp"
+                android:layout_height="88dp"
+                android:layout_marginTop="-34dp"
                 android:background="@drawable/bg_avatar"
                 android:contentDescription="Profile photo"
                 android:scaleType="centerCrop" />
@@ -51,9 +51,21 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:maxLines="2"
                     android:textColor="@color/text_primary"
                     android:textSize="22sp"
                     android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/profile_BTN_message"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:contentDescription="Message"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_chat_24"
+                    android:visibility="gone" />
 
                 <ImageButton
                     android:id="@+id/profile_BTN_settings"
@@ -68,16 +80,16 @@
             <Button
                 android:id="@+id/profile_BTN_edit"
                 android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/bg_button_secondary"
+                android:layout_height="32dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_action_ghost"
                 android:minWidth="0dp"
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
                 android:text="Edit Profile"
                 android:textAllCaps="false"
                 android:textColor="@color/text_primary"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/profile_LBL_headline"
@@ -91,7 +103,7 @@
                 android:id="@+id/profile_LBL_about"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="14dp"
                 android:lineSpacingExtra="3dp"
                 android:textColor="@color/text_secondary"
                 android:textSize="15sp" />
@@ -100,11 +112,15 @@
 
         <Button
             android:id="@+id/profile_BTN_savedItems"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:layout_marginTop="14dp"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_button_secondary"
-            android:text="Saved Items"
+            android:minWidth="0dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="Saved"
+            android:textAllCaps="false"
             android:textColor="@color/text_primary"
             android:textStyle="bold" />
 
@@ -112,7 +128,7 @@
             android:id="@+id/profile_LAY_sections"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical">
 
@@ -121,7 +137,7 @@
                 android:layout_height="wrap_content"
                 android:text="Professional Details"
                 android:textColor="@color/text_primary"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -147,7 +163,7 @@
             android:id="@+id/profile_LAY_edit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
             android:visibility="gone">
@@ -256,7 +272,7 @@
             android:id="@+id/profile_LAY_mediaSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
             android:visibility="gone">
@@ -273,7 +289,7 @@
                     android:layout_weight="1"
                     android:text="Media"
                     android:textColor="@color/text_primary"
-                    android:textSize="19sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <Button
@@ -352,7 +368,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical">
 
@@ -361,7 +377,7 @@
                 android:layout_height="wrap_content"
                 android:text="Create Post"
                 android:textColor="@color/text_primary"
-                android:textSize="19sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <EditText
@@ -588,11 +604,15 @@
 
             <Button
                 android:id="@+id/profile_BTN_createPost"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
+                android:layout_width="wrap_content"
+                android:layout_height="42dp"
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_button_primary"
-                android:text="Post"
+                android:minWidth="0dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="Publish"
+                android:textAllCaps="false"
                 android:textColor="@color/text_primary"
                 android:textStyle="bold" />
         </LinearLayout>

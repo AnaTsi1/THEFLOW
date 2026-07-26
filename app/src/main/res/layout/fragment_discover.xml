@@ -26,29 +26,148 @@
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
-        <EditText
-            android:id="@+id/discover_EDT_search"
+        <LinearLayout
+            android:id="@+id/discover_LAY_search_box"
             android:layout_width="match_parent"
             android:layout_height="54dp"
             android:layout_marginTop="18dp"
             android:background="@drawable/bg_input"
-            android:hint="Search style, studio, teacher..."
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_muted" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="12dp"
+            android:paddingRight="8dp">
+
+            <EditText
+                android:id="@+id/discover_EDT_search"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:hint="@string/discover_search_hint"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <ImageButton
+                android:id="@+id/discover_BTN_advanced"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/bg_icon_button_compact"
+                android:padding="8dp"
+                android:src="@drawable/ic_more_horizontal_24"
+                android:tint="@color/text_primary" />
+        </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/discover_LAY_filters"
+            android:id="@+id/discover_LAY_search_types"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:background="@drawable/bg_chip" android:text=" Style " android:textColor="@color/text_secondary" />
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8dp" android:background="@drawable/bg_chip" android:text=" Level " android:textColor="@color/text_secondary" />
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8dp" android:background="@drawable/bg_chip" android:text=" Location " android:textColor="@color/text_secondary" />
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8dp" android:background="@drawable/bg_chip" android:text=" Date " android:textColor="@color/text_secondary" />
+            <TextView
+                android:id="@+id/discover_CHIP_users"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_primary_selected"
+                android:gravity="center"
+                android:text="Users"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/discover_CHIP_studios"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginLeft="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_secondary"
+                android:gravity="center"
+                android:text="Studios"
+                android:textColor="@color/text_secondary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/discover_CHIP_dancers"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginLeft="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_secondary"
+                android:gravity="center"
+                android:text="Dancers"
+                android:textColor="@color/text_secondary"
+                android:textStyle="bold" />
 
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/discover_LAY_advanced"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/discover_EDT_location"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:background="@drawable/bg_input"
+                android:hint="Location"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/discover_EDT_style"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_input"
+                android:hint="Style"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/discover_EDT_level"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_input"
+                android:hint="Level"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+
+            <EditText
+                android:id="@+id/discover_EDT_time"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_input"
+                android:hint="Time"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_muted" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/discover_LBL_search_results_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Search Results"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/discover_LAY_search_results"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
 
         <TextView
             android:layout_width="match_parent"
@@ -79,6 +198,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/discover_LBL_google_attribution"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="18dp"
+            android:text="@string/discover_google_attribution"
+            android:textColor="@color/text_muted"
+            android:textSize="11sp"
+            android:visibility="gone" />
 
     </LinearLayout>
 </ScrollView>

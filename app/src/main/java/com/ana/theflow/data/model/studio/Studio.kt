@@ -16,5 +16,8 @@ data class Studio(
     val profileImageUrl: String = "",
     val coverImageUrl: String = "",
     val socialLinks: Map<String, String> = emptyMap(),
-    val status: String = Constants.StudioStatus.PENDING.name
+    val status: String = Constants.StudioStatus.PENDING.name,
+    val googlePlaceId: String = "",
+    val externalSource: String = "",
+    val claimStatus: String = ""
 )

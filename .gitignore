@@ -15,3 +15,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+serviceAccount*.json
+firebase-service-account*.json
+tools/demo-seed/*.credentials.json
+tools/demo-seed/.env
+tools/demo-seed/.service-account.json
+tools/demo-seed/node_modules/

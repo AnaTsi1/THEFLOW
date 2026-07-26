@@ -49,6 +49,15 @@ android {
     buildFeatures {
         compose = true
         viewBinding = true
+        buildConfig = true
+    }
+
+    buildTypes.configureEach {
+        buildConfigField(
+            "String",
+            "PLACES_API_KEY",
+            "\"${localProperties.getProperty("PLACES_API_KEY") ?: localProperties.getProperty("MAPS_API_KEY") ?: System.getenv("PLACES_API_KEY") ?: System.getenv("MAPS_API_KEY").orEmpty()}\""
+        )
     }
 }
 
@@ -79,6 +88,8 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
     implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation("androidx.emoji2:emoji2-views-helper:1.5.0")
+    implementation("com.google.android.libraries.places:places:5.3.0")
     implementation(libs.play.services.maps)
 
 }

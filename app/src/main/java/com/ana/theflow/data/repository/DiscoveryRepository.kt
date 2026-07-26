@@ -1,5 +1,7 @@
 package com.ana.theflow.data.repository
 
+import android.content.Context
+import android.location.Location
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
@@ -13,19 +15,12 @@ object DiscoveryRepository {
     private val db = FirebaseFirestore.getInstance()
     private val activityTrackingRepository = ActivityTrackingRepository()
     private var firebaseItems: List<DiscoveryItem> = emptyList()
+    private var externalItems: List<DiscoveryItem> = emptyList()
+    private var externalStatusMessage: String = ""
 
-    val seedItems = listOf(
-        DiscoveryItem("1", "Hip Hop Foundations", "Beat Room", "Noa Levi", "Hip Hop", "Beginner", "Tel Aviv", "Today 18:00", "Class", 32.0718, 34.7792),
-        DiscoveryItem("2", "Heels After Dark", "Studio Luna", "Maya Cohen", "Heels", "Intermediate", "Tel Aviv", "Today 20:30", "Class", 32.0645, 34.7710),
-        DiscoveryItem("3", "Salsa Social Night", "Latin House", "Carlos M.", "Salsa", "Beginner", "Ramat Gan", "Fri 21:00", "Event", 32.0837, 34.8142),
-        DiscoveryItem("4", "Contemporary Flow", "Move Hub", "Dana Shalev", "Contemporary", "Advanced", "Herzliya", "Wed 19:30", "Class", 32.1663, 34.8433),
-        DiscoveryItem("5", "Afro Fusion Lab", "Studio Luna", "Ari Ben", "Afro", "Intermediate", "Tel Aviv", "Thu 20:00", "Workshop", 32.0645, 34.7710),
-        DiscoveryItem("6", "Adult Ballet Basics", "North Stage", "Lior Dan", "Ballet", "Beginner", "Haifa", "Sun 17:00", "Class", 32.7940, 34.9896)
-    )
-
-    var preferredStyles: MutableSet<String> = mutableSetOf("Hip Hop", "Heels")
-    var preferredLevel: String = "Intermediate"
-    var preferredLocation: String = "Tel Aviv"
+    var preferredStyles: MutableSet<String> = mutableSetOf()
+    var preferredLevel: String = ""
+    var preferredLocation: String = ""
 
     private val styleScores = mutableMapOf<String, Int>()
     private val studioScores = mutableMapOf<String, Int>()
@@ -140,7 +135,10 @@ object DiscoveryRepository {
                         level = document.getString("level").orEmpty(),
                         location = document.getString("location").orEmpty(),
                         time = document.getString("time").orEmpty(),
-                        type = document.getString("itemType").orEmpty().ifBlank { "Discovery item" }
+                        type = document.getString("itemType").orEmpty().ifBlank { "Discovery item" },
+                        source = document.getString("source").orEmpty().ifBlank { DiscoveryItem.SOURCE_INTERNAL },
+                        googlePlaceId = document.getString("googlePlaceId").orEmpty(),
+                        address = document.getString("address").orEmpty()
                     )
                 }
                 rememberItems(savedItems)
@@ -173,6 +171,9 @@ object DiscoveryRepository {
             "level" to item.level,
             "location" to item.location,
             "time" to item.time,
+            "source" to item.source,
+            "googlePlaceId" to item.googlePlaceId,
+            "address" to item.address,
             "savedAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp()
         )
@@ -339,6 +340,7 @@ object DiscoveryRepository {
 
                     val branchName = document.firstNonBlankString("branchName")
                     val city = document.firstNonBlankString("city", "location")
+                    val googlePlaceId = document.firstNonBlankString("googlePlaceId")
                     val title = listOf(studioName, branchName)
                         .filter { it.isNotBlank() }
                         .joinToString(" - ")
@@ -356,7 +358,10 @@ object DiscoveryRepository {
                         latitude = document.getDouble("latitude"),
                         longitude = document.getDouble("longitude"),
                         claimStatus = document.firstNonBlankString("claimStatus"),
-                        ownerUid = document.firstNonBlankString("ownerUid")
+                        ownerUid = document.firstNonBlankString("ownerUid"),
+                        source = DiscoveryItem.SOURCE_INTERNAL,
+                        googlePlaceId = googlePlaceId,
+                        address = document.firstNonBlankString("address")
                     )
                 }
                 onSuccess(firebaseItems)
@@ -364,6 +369,35 @@ object DiscoveryRepository {
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to load studios")
             }
+    }
+
+    fun loadExternalStudios(
+        context: Context,
+        query: String = "",
+        city: String = "",
+        location: Location? = null,
+        onSuccess: (List<DiscoveryItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        GooglePlacesStudioDataSource(context).searchStudios(
+            query = query,
+            city = city.ifBlank { preferredLocation },
+            location = location,
+            onSuccess = { studios ->
+                externalItems = studios
+                externalStatusMessage = if (studios.isEmpty()) {
+                    "No Google studios found for this area yet."
+                } else {
+                    "Google Places results included."
+                }
+                onSuccess(studios)
+            },
+            onFailure = { error ->
+                externalItems = emptyList()
+                externalStatusMessage = error
+                onFailure(error)
+            }
+        )
     }
 
     // Returns the recommendation explanation for an item.
@@ -379,7 +413,8 @@ object DiscoveryRepository {
     fun behaviorSummary(): String {
         val topStyle = styleScores.maxByOrNull { it.value }?.key ?: preferredStyles.firstOrNull() ?: "Not set"
         val topStudio = studioScores.maxByOrNull { it.value }?.key ?: "No studio yet"
-        return "Top style: $topStyle\nTop studio: $topStudio\nLocation: $preferredLocation"
+        return "Top style: $topStyle\nTop studio: $topStudio\nLocation: $preferredLocation" +
+            if (externalStatusMessage.isBlank()) "" else "\n$externalStatusMessage"
     }
 
     // Loads the current user recommendation profile.
@@ -419,9 +454,48 @@ object DiscoveryRepository {
         return query.isBlank() || value.contains(query, ignoreCase = true)
     }
 
-    // Returns Firestore items or seed items when none are loaded.
+    // Returns loaded Firestore and external discovery items.
     private fun allItems(): List<DiscoveryItem> {
-        return firebaseItems.ifEmpty { seedItems }
+        val internal = firebaseItems
+        if (externalItems.isEmpty()) return internal
+        val internalGoogleIds = internal.mapNotNull { it.googlePlaceId.takeIf(String::isNotBlank) }.toSet()
+        val internalKeys = internal.map { duplicateKey(it) }.toSet()
+        val filteredExternal = externalItems.filterNot { external ->
+            external.googlePlaceId in internalGoogleIds ||
+                duplicateKey(external) in internalKeys ||
+                internal.any { internalItem -> looksLikeSameStudio(internalItem, external) }
+        }
+        return (internal + filteredExternal).sortedWith(
+            compareByDescending<DiscoveryItem> { it.source == DiscoveryItem.SOURCE_INTERNAL }
+                .thenByDescending { it.ownerUid.isNotBlank() || it.claimStatus.equals("CLAIMED", ignoreCase = true) }
+                .thenBy { it.distanceMeters ?: Double.MAX_VALUE }
+                .thenByDescending { if (it.source == DiscoveryItem.SOURCE_GOOGLE) it.rating ?: 0.0 else 10.0 }
+        )
+    }
+
+    private fun duplicateKey(item: DiscoveryItem): String {
+        return "${normalize(item.studio)}|${normalize(item.address.ifBlank { item.location })}"
+    }
+
+    private fun looksLikeSameStudio(internal: DiscoveryItem, external: DiscoveryItem): Boolean {
+        if (normalize(internal.studio) != normalize(external.studio)) return false
+        val internalLat = internal.latitude
+        val internalLng = internal.longitude
+        val externalLat = external.latitude
+        val externalLng = external.longitude
+        if (internalLat != null && internalLng != null && externalLat != null && externalLng != null) {
+            val distance = FloatArray(1)
+            Location.distanceBetween(internalLat, internalLng, externalLat, externalLng, distance)
+            return distance[0] <= DUPLICATE_DISTANCE_METERS
+        }
+        return normalize(internal.location).isNotBlank() &&
+            normalize(internal.location) == normalize(external.location)
+    }
+
+    private fun normalize(value: String): String {
+        return value.lowercase()
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+            .trim()
     }
 
     // Maps a discovery item to the activity target type stored in Firebase.
@@ -444,4 +518,6 @@ object DiscoveryRepository {
             getString(field)?.takeIf { it.isNotBlank() }
         }.orEmpty()
     }
+
+    private const val DUPLICATE_DISTANCE_METERS = 120
 }

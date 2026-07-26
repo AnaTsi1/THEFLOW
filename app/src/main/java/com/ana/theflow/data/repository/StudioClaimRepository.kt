@@ -47,6 +47,8 @@ class StudioClaimRepository {
     fun submitClaim(
         studioId: String,
         studioName: String,
+        googlePlaceId: String = "",
+        address: String = "",
         justification: String,
         verificationDetails: String,
         onSuccess: () -> Unit,
@@ -59,7 +61,7 @@ class StudioClaimRepository {
             return
         }
 
-        if (studioId.isBlank()) {
+        if (studioId.isBlank() && googlePlaceId.isBlank()) {
             onFailure("Missing studio id")
             return
         }
@@ -77,6 +79,33 @@ class StudioClaimRepository {
                 val role = userDocument.getString("role").orEmpty()
                 if (!role.isStudioManagerRole()) {
                     onFailure("Only studio managers can claim studios")
+                    return@addOnSuccessListener
+                }
+
+                if (googlePlaceId.isNotBlank() && studioId.startsWith("google_")) {
+                    ensureNoPendingClaim(
+                        studioId = studioId,
+                        googlePlaceId = googlePlaceId,
+                        onSuccess = {
+                            createClaim(
+                                studioId = studioId,
+                                studioName = studioName,
+                                requesterUid = uid,
+                                requesterEmail = currentUser.email.orEmpty(),
+                                requesterName = listOf(
+                                    userDocument.getString("firstName").orEmpty(),
+                                    userDocument.getString("lastName").orEmpty()
+                                ).filter { it.isNotBlank() }.joinToString(" "),
+                                googlePlaceId = googlePlaceId,
+                                address = address,
+                                justification = justification.trim(),
+                                verificationDetails = verificationDetails.trim(),
+                                onSuccess = onSuccess,
+                                onFailure = onFailure
+                            )
+                        },
+                        onFailure = onFailure
+                    )
                     return@addOnSuccessListener
                 }
 
@@ -110,6 +139,7 @@ class StudioClaimRepository {
 
                         ensureNoPendingClaim(
                             studioId = studioId,
+                            googlePlaceId = googlePlaceId,
                             onSuccess = {
                                 createClaim(
                                     studioId = studioId,
@@ -120,6 +150,8 @@ class StudioClaimRepository {
                                         userDocument.getString("firstName").orEmpty(),
                                         userDocument.getString("lastName").orEmpty()
                                     ).filter { it.isNotBlank() }.joinToString(" "),
+                                    googlePlaceId = googlePlaceId,
+                                    address = address,
                                     justification = justification.trim(),
                                     verificationDetails = verificationDetails.trim(),
                                     onSuccess = onSuccess,
@@ -141,11 +173,14 @@ class StudioClaimRepository {
     // Checks that the studio has no pending claim.
     private fun ensureNoPendingClaim(
         studioId: String,
+        googlePlaceId: String = "",
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
+        val field = if (googlePlaceId.isBlank()) "studioId" else "googlePlaceId"
+        val value = if (googlePlaceId.isBlank()) studioId else googlePlaceId
         db.collection(Constants.Collections.STUDIO_CLAIMS)
-            .whereEqualTo("studioId", studioId)
+            .whereEqualTo(field, value)
             .whereEqualTo("status", "PENDING")
             .limit(1)
             .get()
@@ -168,6 +203,8 @@ class StudioClaimRepository {
         requesterUid: String,
         requesterEmail: String,
         requesterName: String,
+        googlePlaceId: String,
+        address: String,
         justification: String,
         verificationDetails: String,
         onSuccess: () -> Unit,
@@ -181,6 +218,9 @@ class StudioClaimRepository {
             "requesterUid" to requesterUid,
             "requesterEmail" to requesterEmail,
             "requesterName" to requesterName,
+            "googlePlaceId" to googlePlaceId,
+            "externalSource" to if (googlePlaceId.isBlank()) "" else "google",
+            "address" to address,
             "justification" to justification,
             "verificationDetails" to verificationDetails,
             "status" to "PENDING",
@@ -189,6 +229,15 @@ class StudioClaimRepository {
             "reviewedByUid" to "",
             "adminNote" to ""
         )
+
+        if (googlePlaceId.isNotBlank() && studioId.startsWith("google_")) {
+            claimRef.set(claim)
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { error ->
+                    onFailure(error.message ?: "Failed to submit claim")
+                }
+            return
+        }
 
         db.runBatch { batch ->
             batch.set(claimRef, claim)

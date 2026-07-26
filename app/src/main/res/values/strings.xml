@@ -1,3 +1,22 @@
 <resources>
     <string name="app_name">THE FLOW</string>
+    <string name="discover_loading_studios">Loading studios...</string>
+    <string name="discover_search_hint">Search style, studio, teacher...</string>
+    <string name="discover_external_unavailable">External studio search is unavailable right now.</string>
+    <string name="discover_location_permission_denied">Location permission denied. Searching by city instead.</string>
+    <string name="discover_google_attribution">Places data provided by Google</string>
+    <string name="discover_source_google">Google</string>
+    <string name="discover_source_internal">THE FLOW</string>
+    <string name="discover_source_verified">Verified on THE FLOW</string>
+    <string name="detail_claim_studio">Claim Studio</string>
+    <string name="detail_claim_pending">Claim Pending</string>
+    <string name="detail_studio_claimed">Studio Claimed</string>
+    <string name="detail_open_google_maps">Maps</string>
+    <string name="detail_open_website">Website</string>
+    <string name="detail_call_studio">Call</string>
+    <string name="detail_navigate">Navigate</string>
+    <string name="detail_report">Report</string>
+    <string name="detail_external_info_missing">This detail is currently available from Google Places.</string>
+    <string name="detail_google_attribution">Studio information provided by Google. THE FLOW does not permanently store Google business details.</string>
+    <string name="claim_external_hint">This claim includes the Google Place ID for admin review.</string>
 </resources>

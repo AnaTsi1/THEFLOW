@@ -25,6 +25,7 @@ import com.ana.theflow.data.model.post.PostMediaItem
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.AuthRepository
+import com.ana.theflow.data.repository.MessagingRepository
 import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.StorageRepository
 import com.ana.theflow.data.repository.UserRepository
@@ -41,7 +42,10 @@ class ProfileFragment : Fragment() {
     private val postRepository = PostRepository()
     private val storageRepository = StorageRepository()
     private val activityTrackingRepository = ActivityTrackingRepository()
+    private val messagingRepository = MessagingRepository()
     private var currentUser: User? = null
+    private var profileUid: String = ""
+    private var isOwnProfile: Boolean = true
     private var pendingProfilePhotoUri: Uri? = null
     private var pendingCoverImageUri: Uri? = null
     private var pendingPostMediaUri: Uri? = null
@@ -102,6 +106,9 @@ class ProfileFragment : Fragment() {
         binding.profileBTNSavedItems.setOnClickListener {
             (requireActivity() as MainActivity).openSavedItems()
         }
+        binding.profileBTNMessage.setOnClickListener {
+            startConversation()
+        }
         binding.profileBTNCreatePost.setOnClickListener {
             createPost()
         }
@@ -137,9 +144,11 @@ class ProfileFragment : Fragment() {
             Toast.makeText(requireContext(), "User is not logged in", Toast.LENGTH_SHORT).show()
             return
         }
+        profileUid = arguments?.getString(ARG_USER_ID).orEmpty().ifBlank { uid }
+        isOwnProfile = profileUid == uid
 
         userRepository.getUserByUid(
-            uid = uid,
+            uid = profileUid,
             onSuccess = { user ->
                 currentUser = user
                 renderProfile(user)
@@ -189,6 +198,41 @@ class ProfileFragment : Fragment() {
         binding.profileLBLSkills.visibility = if (user.skills.isEmpty()) View.GONE else View.VISIBLE
 
         renderProfileImages(user)
+        renderProfileActions()
+    }
+
+    private fun renderProfileActions() {
+        binding.profileBTNSettings.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        binding.profileBTNEdit.visibility = if (isOwnProfile) binding.profileBTNEdit.visibility else View.GONE
+        binding.profileBTNSavedItems.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        binding.profileBTNMessage.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
+        binding.profileLAYEdit.visibility = if (isOwnProfile) binding.profileLAYEdit.visibility else View.GONE
+        binding.profileBTNCreatePost.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        binding.profileEDTPostText.isEnabled = isOwnProfile
+        binding.profileEDTPostText.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+    }
+
+    private fun startConversation() {
+        if (isOwnProfile) return
+        val targetUid = profileUid
+        if (targetUid.isBlank()) {
+            Toast.makeText(requireContext(), "Profile is not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.profileBTNMessage.isEnabled = false
+        messagingRepository.resolveOrCreateConversation(
+            otherUserId = targetUid,
+            onSuccess = { conversationId ->
+                if (_binding == null) return@resolveOrCreateConversation
+                binding.profileBTNMessage.isEnabled = true
+                (requireActivity() as MainActivity).openChat(conversationId)
+            },
+            onFailure = { error ->
+                if (_binding == null) return@resolveOrCreateConversation
+                binding.profileBTNMessage.isEnabled = true
+                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+            }
+        )
     }
 
     // Formats one profile detail line.
@@ -932,6 +976,23 @@ class ProfileFragment : Fragment() {
         _binding = null
     }
 
+    companion object {
+        private const val ARG_USER_ID = "ARG_USER_ID"
+        private const val MEDIA_TYPE_NONE = "none"
+        private const val MEDIA_TYPE_PHOTO = "photo"
+        private const val MEDIA_TYPE_VIDEO = "video"
+        private const val MEDIA_TYPE_MEDIA = "media"
+        private const val MEDIA_STRIP_LIMIT = 8
+
+        fun newInstance(uid: String): ProfileFragment {
+            return ProfileFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_USER_ID, uid)
+                }
+            }
+        }
+    }
+
     private enum class ComposerMode(val postType: String) {
         REGULAR("regular"),
         DANCE_ACTIVITY("dance_activity"),
@@ -944,13 +1005,6 @@ class ProfileFragment : Fragment() {
         val allItems: List<PostMediaItem>
     )
 
-    private companion object {
-        const val MEDIA_TYPE_NONE = "none"
-        const val MEDIA_TYPE_PHOTO = "photo"
-        const val MEDIA_TYPE_VIDEO = "video"
-        const val MEDIA_TYPE_MEDIA = "media"
-        const val MEDIA_STRIP_LIMIT = 8
-    }
 }
 
 // Converts dp units to pixels.

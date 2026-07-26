@@ -3,6 +3,7 @@ package com.ana.theflow.data.repository
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
 import com.ana.theflow.data.model.post.PostMediaItem
+import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
@@ -15,6 +16,7 @@ class PostRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val notificationRepository = NotificationRepository()
 
     // Creates a new text post for the author.
     fun createTextPost(
@@ -127,15 +129,14 @@ class PostRepository {
     ) {
         db.collection(Constants.Collections.POSTS)
             .whereEqualTo("visibility", "public")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(50)
+            .limit(100)
             .get()
             .addOnSuccessListener { snapshot ->
                 val posts = snapshot.documents.mapNotNull { document ->
                     document.toObject(Post::class.java)?.copy(postId = document.id)
-                }
+                }.sortedByDescending { it.createdAt?.seconds ?: 0L }
                 rankForYouFeed(
-                    posts = posts,
+                    posts = posts.take(50),
                     onSuccess = onSuccess
                 )
             }
@@ -358,7 +359,10 @@ class PostRepository {
             }
             !isLiked
         }
-            .addOnSuccessListener { isLiked -> onSuccess(isLiked) }
+            .addOnSuccessListener { isLiked ->
+                if (isLiked) createLikeNotification(postId, uid)
+                onSuccess(isLiked)
+            }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to update like")
             }
@@ -427,10 +431,69 @@ class PostRepository {
             batch.set(commentRef, comment)
             batch.update(postRef, "commentsCount", FieldValue.increment(1))
         }
-            .addOnSuccessListener { onSuccess() }
+            .addOnSuccessListener {
+                createCommentNotification(postId, currentUid, author, cleanText, commentRef.id)
+                onSuccess()
+            }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to add comment")
             }
+    }
+
+    private fun createLikeNotification(postId: String, actorUid: String) {
+        loadPostById(
+            postId = postId,
+            onSuccess = { post ->
+                if (post.authorId == actorUid) return@loadPostById
+                UserRepository().getUserByUid(
+                    uid = actorUid,
+                    onSuccess = { actor ->
+                        val actorName = "${actor.firstName} ${actor.lastName}".trim().ifBlank { "Dancer" }
+                        notificationRepository.createNotification(
+                            recipientUid = post.authorId,
+                            type = InAppNotification.Types.LIKE,
+                            actorId = actorUid,
+                            actorName = actorName,
+                            actorProfileImageUrl = actor.profileImageUrl,
+                            postId = post.postId,
+                            title = "New like",
+                            message = "$actorName liked your post.",
+                            dedupeId = "like_${post.postId}_$actorUid"
+                        )
+                    },
+                    onFailure = {}
+                )
+            },
+            onFailure = {}
+        )
+    }
+
+    private fun createCommentNotification(
+        postId: String,
+        actorUid: String,
+        actor: User,
+        text: String,
+        commentId: String
+    ) {
+        loadPostById(
+            postId = postId,
+            onSuccess = { post ->
+                if (post.authorId == actorUid) return@loadPostById
+                val actorName = "${actor.firstName} ${actor.lastName}".trim().ifBlank { "Dancer" }
+                notificationRepository.createNotification(
+                    recipientUid = post.authorId,
+                    type = InAppNotification.Types.COMMENT,
+                    actorId = actorUid,
+                    actorName = actorName,
+                    actorProfileImageUrl = actor.profileImageUrl,
+                    postId = post.postId,
+                    title = "New comment",
+                    message = "$actorName commented: ${text.take(80)}",
+                    dedupeId = "comment_${post.postId}_$commentId"
+                )
+            },
+            onFailure = {}
+        )
     }
 
     // Loads recent comments for one post.

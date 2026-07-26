@@ -1,6 +1,7 @@
 package com.ana.theflow
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.View
 import androidx.activity.OnBackPressedCallback
@@ -9,12 +10,18 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.repository.AuthRepository
+import com.ana.theflow.data.repository.MessagingRepository
+import com.ana.theflow.data.repository.NotificationRepository
 import com.ana.theflow.databinding.ActivityMainBinding
 import com.ana.theflow.ui.admin.AdminReviewFragment
 import com.ana.theflow.ui.detail.DetailFragment
+import com.ana.theflow.ui.detail.PostDetailFragment
 import com.ana.theflow.ui.discover.DiscoverFragment
 import com.ana.theflow.ui.home.HomeFragment
 import com.ana.theflow.ui.media.MediaViewerFragment
+import com.ana.theflow.ui.messaging.ChatFragment
+import com.ana.theflow.ui.messaging.ConversationsFragment
+import com.ana.theflow.ui.notifications.NotificationsFragment
 import com.ana.theflow.ui.onboarding.OnboardingFragment
 import com.ana.theflow.ui.profile.ProfileMediaFragment
 import com.ana.theflow.ui.profile.ProfileFragment
@@ -22,11 +29,17 @@ import com.ana.theflow.ui.profile.SavedItemsFragment
 import com.ana.theflow.ui.search.SearchFragment
 import com.ana.theflow.ui.settings.ProfessionalVerificationFragment
 import com.ana.theflow.ui.settings.SettingsFragment
+import com.google.android.libraries.places.api.Places
+import com.google.firebase.firestore.ListenerRegistration
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var selectedTab = AppTab.HOME
+    private val messagingRepository = MessagingRepository()
+    private val notificationRepository = NotificationRepository()
+    private var messageBadgeListener: ListenerRegistration? = null
+    private var notificationBadgeListener: ListenerRegistration? = null
 
     // Sets up the activity when it is created.
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,9 +47,11 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        initializePlaces()
 
         setupBottomNavigation()
         setupBackNavigation()
+        setupBadges()
         supportFragmentManager.addOnBackStackChangedListener {
             syncNavigationState()
         }
@@ -65,10 +80,35 @@ class MainActivity : AppCompatActivity() {
             openDiscover()
         }
 
+        binding.mainBOXMessages.setOnClickListener {
+            openConversations()
+        }
+
+        binding.mainBOXNotifications.setOnClickListener {
+            openNotifications()
+        }
+
         binding.mainNavProfile.setOnClickListener {
             openProfile()
         }
 
+    }
+
+    private fun initializePlaces() {
+        val apiKey = BuildConfig.PLACES_API_KEY
+        if (apiKey.isBlank() || Places.isInitialized()) return
+        Places.initializeWithNewPlacesApiEnabled(applicationContext, apiKey)
+    }
+
+    private fun setupBadges() {
+        messageBadgeListener?.remove()
+        notificationBadgeListener?.remove()
+        messageBadgeListener = messagingRepository.listenToUnreadCount(
+            onUpdate = { count -> renderBadge(binding.mainBadgeMessages, count) }
+        )
+        notificationBadgeListener = notificationRepository.listenToUnreadCount(
+            onUpdate = { count -> renderBadge(binding.mainBadgeNotifications, count) }
+        )
     }
 
     // Connects Android back presses to app navigation.
@@ -110,6 +150,31 @@ class MainActivity : AppCompatActivity() {
     // Opens the profile tab.
     fun openProfile() {
         openRootTab(ProfileFragment(), AppTab.PROFILE)
+    }
+
+    fun openUserProfile(uid: String) {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(ProfileFragment.newInstance(uid), addToBackStack = true)
+    }
+
+    fun openConversations() {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(ConversationsFragment(), addToBackStack = true)
+    }
+
+    fun openNotifications() {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(NotificationsFragment(), addToBackStack = true)
+    }
+
+    fun openChat(conversationId: String) {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(ChatFragment.newInstance(conversationId), addToBackStack = true)
+    }
+
+    fun openPost(postId: String) {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(PostDetailFragment.newInstance(postId), addToBackStack = true)
     }
 
     // Opens the search screen.
@@ -220,7 +285,7 @@ class MainActivity : AppCompatActivity() {
     // Keeps the bottom navigation state in sync with the visible screen.
     private fun syncNavigationState() {
         when (supportFragmentManager.findFragmentById(R.id.main_fragment_container)) {
-            is DetailFragment, is OnboardingFragment, is ProfileMediaFragment, is MediaViewerFragment -> {
+            is DetailFragment, is PostDetailFragment, is OnboardingFragment, is ProfileMediaFragment, is MediaViewerFragment, is ChatFragment -> {
                 binding.mainLAYBottomNav.visibility = View.GONE
             }
             else -> binding.mainLAYBottomNav.visibility = View.VISIBLE
@@ -247,12 +312,45 @@ class MainActivity : AppCompatActivity() {
         binding.mainNavHome.setTextColor(getTabColor(tab == AppTab.HOME))
         binding.mainNavDiscover.setTextColor(getTabColor(tab == AppTab.DISCOVER))
         binding.mainNavProfile.setTextColor(getTabColor(tab == AppTab.PROFILE))
+        binding.mainNavHome.alpha = if (tab == AppTab.HOME) 1f else 0.72f
+        binding.mainNavDiscover.alpha = if (tab == AppTab.DISCOVER) 1f else 0.72f
+        binding.mainNavProfile.alpha = if (tab == AppTab.PROFILE) 1f else 0.72f
+        binding.mainNavHome.setTypeface(null, if (tab == AppTab.HOME) Typeface.BOLD else Typeface.NORMAL)
+        binding.mainNavDiscover.setTypeface(null, if (tab == AppTab.DISCOVER) Typeface.BOLD else Typeface.NORMAL)
+        binding.mainNavProfile.setTypeface(null, if (tab == AppTab.PROFILE) Typeface.BOLD else Typeface.NORMAL)
+        selectedTabView(tab).animate()
+            .scaleX(1.04f)
+            .scaleY(1.04f)
+            .setDuration(90)
+            .withEndAction {
+                selectedTabView(tab).animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+            }
+            .start()
     }
 
     // Returns the color for a selected or unselected tab.
     private fun getTabColor(isSelected: Boolean): Int {
         val colorRes = if (isSelected) R.color.neon_pink else R.color.text_muted
         return getColor(colorRes)
+    }
+
+    private fun selectedTabView(tab: AppTab): View {
+        return when (tab) {
+            AppTab.HOME -> binding.mainNavHome
+            AppTab.DISCOVER -> binding.mainNavDiscover
+            AppTab.PROFILE -> binding.mainNavProfile
+        }
+    }
+
+    private fun renderBadge(badge: android.widget.TextView, count: Long) {
+        badge.visibility = if (count > 0) View.VISIBLE else View.GONE
+        badge.text = count.coerceAtMost(99).toString()
+    }
+
+    override fun onDestroy() {
+        messageBadgeListener?.remove()
+        notificationBadgeListener?.remove()
+        super.onDestroy()
     }
 
     enum class AppTab {

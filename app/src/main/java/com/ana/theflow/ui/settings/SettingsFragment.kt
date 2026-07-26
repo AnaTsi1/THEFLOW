@@ -5,9 +5,15 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.RadioButton
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
+import com.ana.theflow.R
+import com.ana.theflow.data.model.settings.MessageSettings
+import com.ana.theflow.data.model.settings.NotificationSettings
 import com.ana.theflow.data.repository.AuthRepository
+import com.ana.theflow.data.repository.SettingsRepository
 import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.databinding.FragmentSettingsBinding
 import com.ana.theflow.ui.auth.LoginActivity
@@ -19,6 +25,10 @@ class SettingsFragment : Fragment() {
     private val binding get() = _binding!!
     private val authRepository = AuthRepository()
     private val userRepository = UserRepository()
+    private val settingsRepository = SettingsRepository()
+    private var isBindingSettings = false
+    private var notificationSettings = NotificationSettings()
+    private var messageSettings = MessageSettings()
 
     // Creates and returns the fragment view.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -43,7 +53,155 @@ class SettingsFragment : Fragment() {
         binding.settingsBTNLogout.setOnClickListener {
             logout()
         }
+        setupSettingsListeners()
         loadAdminAccess()
+        loadUserSettings()
+    }
+
+    private fun setupSettingsListeners() {
+        val saveNotifications = {
+            if (!isBindingSettings) saveNotificationSettingsFromUi()
+        }
+        binding.settingsSWAllNotifications.setOnCheckedChangeListener { _, _ ->
+            updateNotificationChildrenState()
+            saveNotifications()
+        }
+        binding.settingsSWLikes.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+        binding.settingsSWComments.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+        binding.settingsSWNewFollowers.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+        binding.settingsSWPrivateMessages.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+        binding.settingsSWEventRecommendations.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+        binding.settingsSWRegisteredEventUpdates.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+        binding.settingsSWProfessionalApplicationUpdates.setOnCheckedChangeListener { _, _ -> saveNotifications() }
+
+        val saveMessages = {
+            if (!isBindingSettings) saveMessageSettingsFromUi()
+        }
+        binding.settingsSWMessageNotifications.setOnCheckedChangeListener { _, _ -> saveMessages() }
+        binding.settingsSWMessagePreviews.setOnCheckedChangeListener { _, _ -> saveMessages() }
+        binding.settingsSWReadReceipts.setOnCheckedChangeListener { _, _ -> saveMessages() }
+        binding.settingsSWEmojiSuggestions.setOnCheckedChangeListener { _, _ -> saveMessages() }
+        binding.settingsRADReceiveMessages.setOnCheckedChangeListener { _, _ -> saveMessages() }
+    }
+
+    private fun loadUserSettings() {
+        setSettingsMessage("Loading settings...")
+        isBindingSettings = true
+        settingsRepository.loadSettings(
+            onSuccess = { notifications, messages ->
+                if (_binding == null) return@loadSettings
+                notificationSettings = notifications
+                messageSettings = messages
+                bindNotificationSettings(notifications)
+                bindMessageSettings(messages)
+                isBindingSettings = false
+                setSettingsMessage("")
+            },
+            onFailure = { error ->
+                if (_binding == null) return@loadSettings
+                isBindingSettings = false
+                setSettingsMessage(error)
+            }
+        )
+    }
+
+    private fun bindNotificationSettings(settings: NotificationSettings) {
+        binding.settingsSWAllNotifications.isChecked = settings.allNotificationsEnabled
+        binding.settingsSWLikes.isChecked = settings.likes
+        binding.settingsSWComments.isChecked = settings.comments
+        binding.settingsSWNewFollowers.isChecked = settings.newFollowers
+        binding.settingsSWPrivateMessages.isChecked = settings.privateMessages
+        binding.settingsSWEventRecommendations.isChecked = settings.eventRecommendations
+        binding.settingsSWRegisteredEventUpdates.isChecked = settings.registeredEventUpdates
+        binding.settingsSWProfessionalApplicationUpdates.isChecked = settings.professionalApplicationUpdates
+        updateNotificationChildrenState()
+    }
+
+    private fun bindMessageSettings(settings: MessageSettings) {
+        binding.settingsSWMessageNotifications.isChecked = settings.messageNotificationsEnabled
+        binding.settingsSWMessagePreviews.isChecked = settings.showMessagePreviews
+        binding.settingsSWReadReceipts.isChecked = settings.readReceipts
+        binding.settingsSWEmojiSuggestions.isChecked = settings.emojiSuggestions
+        val selectedId = when (settings.receiveMessagesFrom) {
+            MessageSettings.RECEIVE_FOLLOWING -> R.id.settings_RAD_following
+            MessageSettings.RECEIVE_NOBODY -> R.id.settings_RAD_nobody
+            else -> R.id.settings_RAD_everyone
+        }
+        binding.settingsRADReceiveMessages.check(selectedId)
+    }
+
+    private fun updateNotificationChildrenState() {
+        val enabled = binding.settingsSWAllNotifications.isChecked
+        listOf(
+            binding.settingsSWLikes,
+            binding.settingsSWComments,
+            binding.settingsSWNewFollowers,
+            binding.settingsSWPrivateMessages,
+            binding.settingsSWEventRecommendations,
+            binding.settingsSWRegisteredEventUpdates,
+            binding.settingsSWProfessionalApplicationUpdates
+        ).forEach { view ->
+            view.isEnabled = enabled
+            view.alpha = if (enabled) 1f else 0.45f
+        }
+    }
+
+    private fun saveNotificationSettingsFromUi() {
+        val updated = NotificationSettings(
+            allNotificationsEnabled = binding.settingsSWAllNotifications.isChecked,
+            likes = binding.settingsSWLikes.isChecked,
+            comments = binding.settingsSWComments.isChecked,
+            newFollowers = binding.settingsSWNewFollowers.isChecked,
+            privateMessages = binding.settingsSWPrivateMessages.isChecked,
+            eventRecommendations = binding.settingsSWEventRecommendations.isChecked,
+            registeredEventUpdates = binding.settingsSWRegisteredEventUpdates.isChecked,
+            professionalApplicationUpdates = binding.settingsSWProfessionalApplicationUpdates.isChecked
+        )
+        if (updated == notificationSettings) return
+        notificationSettings = updated
+        settingsRepository.saveNotificationSettings(
+            settings = updated,
+            onSuccess = { if (_binding != null) setSettingsMessage("Notification settings saved") },
+            onFailure = { error ->
+                if (_binding != null) {
+                    Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    private fun saveMessageSettingsFromUi() {
+        val updated = MessageSettings(
+            messageNotificationsEnabled = binding.settingsSWMessageNotifications.isChecked,
+            showMessagePreviews = binding.settingsSWMessagePreviews.isChecked,
+            receiveMessagesFrom = receiveMessagesValue(),
+            readReceipts = binding.settingsSWReadReceipts.isChecked,
+            emojiSuggestions = binding.settingsSWEmojiSuggestions.isChecked
+        )
+        if (updated == messageSettings) return
+        messageSettings = updated
+        settingsRepository.saveMessageSettings(
+            settings = updated,
+            onSuccess = { if (_binding != null) setSettingsMessage("Message settings saved") },
+            onFailure = { error ->
+                if (_binding != null) {
+                    Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    private fun receiveMessagesValue(): String {
+        return when (binding.settingsRADReceiveMessages.checkedRadioButtonId) {
+            R.id.settings_RAD_following -> MessageSettings.RECEIVE_FOLLOWING
+            R.id.settings_RAD_nobody -> MessageSettings.RECEIVE_NOBODY
+            else -> MessageSettings.RECEIVE_EVERYONE
+        }
+    }
+
+    private fun setSettingsMessage(message: String) {
+        binding.settingsLBLSettingsMessage.text = message
+        binding.settingsLBLSettingsMessage.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
     }
 
     private fun loadAdminAccess() {

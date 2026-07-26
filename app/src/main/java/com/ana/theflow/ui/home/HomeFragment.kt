@@ -40,9 +40,6 @@ class HomeFragment : Fragment() {
 
     // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        binding.homeBTNSearch.setOnClickListener {
-            (requireActivity() as MainActivity).openSearch()
-        }
         binding.homeTABForYou.setOnClickListener {
             selectTab(isForYou = true)
         }
@@ -67,10 +64,10 @@ class HomeFragment : Fragment() {
     private fun selectTab(isForYou: Boolean) {
         selectedFeed = if (isForYou) FeedTab.FOR_YOU else FeedTab.FOLLOWING
         binding.homeTABForYou.setBackgroundResource(
-            if (isForYou) R.drawable.bg_button_primary else R.drawable.bg_button_secondary
+            if (isForYou) R.drawable.bg_button_primary_selected else R.drawable.bg_button_secondary
         )
         binding.homeTABFollowing.setBackgroundResource(
-            if (isForYou) R.drawable.bg_button_secondary else R.drawable.bg_button_primary
+            if (isForYou) R.drawable.bg_button_secondary else R.drawable.bg_button_primary_selected
         )
         binding.homeTABForYou.setTextColor(
             requireContext().getColor(if (isForYou) R.color.text_primary else R.color.text_secondary)
@@ -78,11 +75,6 @@ class HomeFragment : Fragment() {
         binding.homeTABFollowing.setTextColor(
             requireContext().getColor(if (isForYou) R.color.text_secondary else R.color.text_primary)
         )
-        binding.homeLBLSubtitle.text = if (isForYou) {
-            "Professional posts personalized for your dancer profile"
-        } else {
-            "Posts from dancers, teachers, and studios you follow"
-        }
         loadFeed()
     }
 
@@ -199,8 +191,8 @@ class HomeFragment : Fragment() {
     // Returns the empty message for a feed tab.
     private fun emptyMessageFor(feedTab: FeedTab): String {
         return when (feedTab) {
-            FeedTab.FOR_YOU -> "No posts yet. Create the first post from your profile."
-            FeedTab.FOLLOWING -> "Follow dancers and studios to see their latest posts."
+            FeedTab.FOR_YOU -> "Your feed is quiet right now. Create a post from your profile or check back soon."
+            FeedTab.FOLLOWING -> "Follow dancers, teachers, and studios to build a more personal feed."
         }
     }
 

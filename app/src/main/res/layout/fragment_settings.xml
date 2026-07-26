@@ -66,6 +66,185 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/settings_LAY_notificationSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Notification Settings"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <Switch
+                android:id="@+id/settings_SW_allNotifications"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:text="Enable notifications"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_likes"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Likes"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_comments"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Comments"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_newFollowers"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="New followers"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_privateMessages"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Private messages"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_eventRecommendations"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Event recommendations"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_registeredEventUpdates"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Registered event updates"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_professionalApplicationUpdates"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Professional application updates"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/settings_LAY_messageSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Message Settings"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <Switch
+                android:id="@+id/settings_SW_messageNotifications"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:text="Message notifications"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_messagePreviews"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Show message previews"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Receive messages from"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <RadioGroup
+                android:id="@+id/settings_RAD_receiveMessages"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/settings_RAD_everyone"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:text="Everyone"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <RadioButton
+                    android:id="@+id/settings_RAD_following"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:text="People I follow"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <RadioButton
+                    android:id="@+id/settings_RAD_nobody"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:text="Nobody"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </RadioGroup>
+
+            <Switch
+                android:id="@+id/settings_SW_readReceipts"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Read receipts"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <Switch
+                android:id="@+id/settings_SW_emojiSuggestions"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="Emoji suggestions"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/settings_LBL_settingsMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/settings_BTN_logout"
             android:layout_width="match_parent"

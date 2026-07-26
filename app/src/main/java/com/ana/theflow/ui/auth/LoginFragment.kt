@@ -92,13 +92,13 @@ class LoginFragment : Fragment() {
         val studioSelected = selectedRole == Constants.UserRole.STUDIO_MANAGER
         val adminSelected = selectedRole == Constants.UserRole.ADMIN
         binding.loginBTNDancer.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+            if (dancerSelected) com.ana.theflow.R.drawable.bg_button_primary_selected else com.ana.theflow.R.drawable.bg_button_secondary
         )
         binding.loginBTNStudioManager.setBackgroundResource(
-            if (studioSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+            if (studioSelected) com.ana.theflow.R.drawable.bg_button_primary_selected else com.ana.theflow.R.drawable.bg_button_secondary
         )
         binding.loginBTNAdmin.setBackgroundResource(
-            if (adminSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+            if (adminSelected) com.ana.theflow.R.drawable.bg_button_primary_selected else com.ana.theflow.R.drawable.bg_button_secondary
         )
         binding.loginBTNDancer.setTypeface(null, if (dancerSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         binding.loginBTNStudioManager.setTypeface(null, if (studioSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)

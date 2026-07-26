@@ -3,6 +3,7 @@ package com.ana.theflow.ui.common
 import android.view.View
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Gravity
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -36,33 +37,24 @@ object PostCardRenderer {
         val context = parent.context
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.bg_card)
+            setBackgroundResource(R.drawable.bg_post_card)
+            elevation = 3.dp().toFloat()
             isClickable = onOpen != null
             isFocusable = onOpen != null
-            setOnClickListener { onOpen?.invoke(post) }
-            setPadding(18.dp(), 18.dp(), 18.dp(), 18.dp())
+            setOnClickListener {
+                subtleTap(this)
+                onOpen?.invoke(post)
+            }
+            setPadding(14.dp(), 14.dp(), 14.dp(), 12.dp())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = 12.dp()
+                topMargin = 10.dp()
             }
         }
 
-        card.addView(TextView(context).apply {
-            text = post.authorName.ifBlank { "Dancer" }
-            setTextColor(context.getColor(R.color.text_primary))
-            textSize = 17f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        })
-
-        card.addView(TextView(context).apply {
-            text = "${post.authorType.ifBlank { "dancer" }} / ${formatTimestamp(post)}"
-            setTextColor(context.getColor(R.color.text_muted))
-            textSize = 12f
-            setPadding(0, 4.dp(), 0, 0)
-        })
-
+        addHeader(card, post)
         addTypedPostContent(card, post)
 
         if (post.mediaItems.any { it.visibleInMedia && it.url.isNotBlank() } ||
@@ -71,6 +63,11 @@ object PostCardRenderer {
             addPostMedia(card, post, onMediaOpen)
         }
 
+        addEngagementSummary(
+            card = card,
+            likesCount = post.likesCount,
+            commentsCount = if (comments.isNotEmpty()) comments.size.toLong() else post.commentsCount
+        )
         addActionRow(
             card = card,
             post = post,
@@ -86,6 +83,54 @@ object PostCardRenderer {
         addCommentComposer(card, post, onComment)
 
         parent.addView(card)
+    }
+
+    // Adds an avatar and compact author metadata.
+    private fun addHeader(card: LinearLayout, post: Post) {
+        val context = card.context
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val avatar = ImageView(context).apply {
+            setBackgroundResource(R.drawable.bg_avatar)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = "Author profile photo"
+            layoutParams = LinearLayout.LayoutParams(42.dp(), 42.dp()).apply {
+                rightMargin = 10.dp()
+            }
+        }
+        row.addView(avatar)
+        if (post.authorProfileImageUrl.isNotBlank()) {
+            Glide.with(context)
+                .load(post.authorProfileImageUrl)
+                .circleCrop()
+                .into(avatar)
+        }
+
+        row.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+            addView(TextView(context).apply {
+                text = post.authorName.ifBlank { "Dancer" }
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(context.getColor(R.color.text_primary))
+                textSize = 16f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+
+            addView(TextView(context).apply {
+                text = "${post.authorType.ifBlank { "dancer" }} · ${formatTimestamp(post)}"
+                setTextColor(context.getColor(R.color.text_muted))
+                textSize = 12f
+                setPadding(0, 2.dp(), 0, 0)
+            })
+        })
+
+        card.addView(row)
     }
 
     // Adds the body content that matches the post type.
@@ -140,7 +185,8 @@ object PostCardRenderer {
             text = textValue
             setTextColor(context.getColor(R.color.text_secondary))
             textSize = 15f
-            setPadding(0, 14.dp(), 0, 0)
+            setLineSpacing(3.dp().toFloat(), 1f)
+            setPadding(0, 12.dp(), 0, 0)
         })
     }
 
@@ -152,7 +198,7 @@ object PostCardRenderer {
             setTextColor(context.getColor(R.color.text_primary))
             textSize = 16f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 14.dp(), 0, 0)
+            setPadding(0, 12.dp(), 0, 0)
         })
     }
 
@@ -189,7 +235,7 @@ object PostCardRenderer {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     180.dp()
                 ).apply {
-                    topMargin = 14.dp()
+                    topMargin = 12.dp()
                 }
             }
             card.addView(imageView)
@@ -213,8 +259,34 @@ object PostCardRenderer {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 140.dp()
             ).apply {
-                topMargin = 14.dp()
+                topMargin = 12.dp()
             }
+        })
+    }
+
+    // Shows metrics as one quiet line instead of oversized controls.
+    private fun addEngagementSummary(card: LinearLayout, likesCount: Long, commentsCount: Long) {
+        val context = card.context
+        val hasEngagement = likesCount > 0 || commentsCount > 0
+        card.addView(TextView(context).apply {
+            text = if (hasEngagement) {
+                listOfNotNull(
+                    if (likesCount > 0) "$likesCount like${if (likesCount == 1L) "" else "s"}" else null,
+                    if (commentsCount > 0) "$commentsCount comment${if (commentsCount == 1L) "" else "s"}" else null
+                ).joinToString(" · ")
+            } else {
+                "Be the first to react"
+            }
+            setTextColor(context.getColor(R.color.text_muted))
+            textSize = 12f
+            setPadding(0, 12.dp(), 0, 8.dp())
+        })
+        card.addView(View(context).apply {
+            setBackgroundResource(R.drawable.bg_subtle_divider)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1.dp()
+            )
         })
     }
 
@@ -233,28 +305,28 @@ object PostCardRenderer {
         val context = card.context
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 12.dp(), 0, 0)
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 6.dp(), 0, 0)
+            gravity = Gravity.CENTER_VERTICAL
         }
         row.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 
-            addView(createActionCluster(
+            addView(createActionButton(
                 context = context,
                 iconRes = R.drawable.ic_heart_24,
                 iconTint = if (isLiked) R.color.neon_pink else R.color.text_primary,
-                count = likesCount,
+                label = if (isLiked) "Liked" else "Like",
                 contentDescription = if (isLiked) "Unlike" else "Like",
                 onClick = { onLike?.invoke(post) }
             ))
 
-            addView(createActionCluster(
+            addView(createActionButton(
                 context = context,
                 iconRes = R.drawable.ic_comment_24,
                 iconTint = R.color.text_primary,
-                count = commentsCount,
+                label = "Comment",
                 contentDescription = "Comment",
                 onClick = {
                     card.findViewWithTag<EditText>(commentInputTag(post.postId))?.requestFocus()
@@ -266,10 +338,11 @@ object PostCardRenderer {
                 contentDescription = "Post options"
                 setImageResource(R.drawable.ic_more_horizontal_24)
                 setColorFilter(context.getColor(R.color.text_primary))
-                setBackgroundResource(R.drawable.bg_button_secondary)
-                layoutParams = LinearLayout.LayoutParams(38.dp(), 38.dp())
+                setBackgroundResource(R.drawable.bg_icon_button_compact)
+                layoutParams = LinearLayout.LayoutParams(34.dp(), 34.dp())
                 scaleType = ImageView.ScaleType.CENTER
                 setOnClickListener { anchor ->
+                    subtleTap(this)
                     showPostOptions(anchor, post, onEdit, onDelete)
                 }
             })
@@ -277,37 +350,48 @@ object PostCardRenderer {
         card.addView(row)
     }
 
-    // Builds a compact icon-plus-count action.
-    private fun createActionCluster(
+    // Builds a compact icon-plus-label action.
+    private fun createActionButton(
         context: android.content.Context,
         iconRes: Int,
         iconTint: Int,
-        count: Long,
+        label: String,
         contentDescription: String,
         onClick: () -> Unit
     ): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
             isClickable = true
             isFocusable = true
-            setPadding(0, 0, 12.dp(), 0)
-            setOnClickListener { onClick() }
+            setBackgroundResource(R.drawable.bg_action_ghost)
+            setPadding(9.dp(), 7.dp(), 12.dp(), 7.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                36.dp()
+            ).apply {
+                rightMargin = 6.dp()
+            }
+            setOnClickListener {
+                subtleTap(this)
+                onClick()
+            }
 
             addView(ImageButton(context).apply {
                 this.contentDescription = contentDescription
                 setImageResource(iconRes)
                 setColorFilter(context.getColor(iconTint))
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                layoutParams = LinearLayout.LayoutParams(24.dp(), 24.dp())
+                layoutParams = LinearLayout.LayoutParams(20.dp(), 20.dp())
                 scaleType = ImageView.ScaleType.CENTER
             })
 
             addView(TextView(context).apply {
-                text = count.toString()
-                setTextColor(context.getColor(R.color.text_muted))
-                textSize = 11f
-                setPadding(3.dp(), 0, 0, 0)
+                text = label
+                setTextColor(context.getColor(R.color.text_secondary))
+                textSize = 12f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(5.dp(), 0, 0, 0)
             })
         }
     }
@@ -348,7 +432,8 @@ object PostCardRenderer {
                 text = "${comment.authorName.ifBlank { "Dancer" }}: ${comment.text}"
                 setTextColor(context.getColor(R.color.text_secondary))
                 textSize = 13f
-                setPadding(0, 8.dp(), 0, 0)
+                setLineSpacing(2.dp().toFloat(), 1f)
+                setPadding(0, 7.dp(), 0, 0)
             })
         }
     }
@@ -363,7 +448,7 @@ object PostCardRenderer {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 10.dp(), 0, 0)
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         val input = EditText(context).apply {
             tag = commentInputTag(post.postId)
@@ -371,7 +456,10 @@ object PostCardRenderer {
             setTextColor(context.getColor(R.color.text_primary))
             setHintTextColor(context.getColor(R.color.text_muted))
             setBackgroundResource(R.drawable.bg_input)
-            layoutParams = LinearLayout.LayoutParams(0, 46.dp(), 1f).apply {
+            textSize = 14f
+            minHeight = 42.dp()
+            maxLines = 3
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = 8.dp()
             }
         }
@@ -380,8 +468,8 @@ object PostCardRenderer {
             contentDescription = "Send comment"
             setImageResource(R.drawable.ic_send_24)
             setColorFilter(context.getColor(R.color.text_primary))
-            setBackgroundResource(R.drawable.bg_button_secondary)
-            layoutParams = LinearLayout.LayoutParams(40.dp(), 40.dp())
+            setBackgroundResource(R.drawable.bg_icon_button_compact)
+            layoutParams = LinearLayout.LayoutParams(38.dp(), 38.dp())
             scaleType = ImageView.ScaleType.CENTER
             alpha = 0.45f
             isEnabled = false
@@ -401,6 +489,7 @@ object PostCardRenderer {
         sendButton.setOnClickListener {
             val message = input.text.toString().trim()
             if (message.isBlank()) return@setOnClickListener
+            subtleTap(sendButton)
             onComment?.invoke(post, message)
             input.text?.clear()
         }
@@ -427,6 +516,23 @@ object PostCardRenderer {
         val createdAt = post.createdAt ?: return "just now"
         return SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
             .format(Date(createdAt.seconds * 1000))
+    }
+
+    private fun subtleTap(view: View) {
+        view.animate()
+            .scaleX(0.98f)
+            .scaleY(0.98f)
+            .alpha(0.88f)
+            .setDuration(70)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(90)
+                    .start()
+            }
+            .start()
     }
 
     private const val POST_TYPE_DANCE_ACTIVITY = "dance_activity"
