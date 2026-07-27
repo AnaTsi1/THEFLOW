@@ -30,7 +30,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["MAPS_API_KEY"] =
-            localProperties.getProperty("MAPS_API_KEY") ?: System.getenv("MAPS_API_KEY").orEmpty()
+            localProperties.getProperty("MAPS_API_KEY")
+                ?: localProperties.getProperty("PLACES_API_KEY")
+                ?: System.getenv("MAPS_API_KEY")
+                ?: System.getenv("PLACES_API_KEY").orEmpty()
     }
 
     buildTypes {
@@ -74,6 +77,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

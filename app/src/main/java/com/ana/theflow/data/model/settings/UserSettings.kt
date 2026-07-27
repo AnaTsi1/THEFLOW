@@ -1,3 +1,5 @@
+
+
 package com.ana.theflow.data.model.settings
 
 data class NotificationSettings(

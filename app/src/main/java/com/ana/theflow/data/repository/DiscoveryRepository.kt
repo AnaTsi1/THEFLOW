@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Location
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.utilities.Constants
+import com.ana.theflow.utilities.StudioDiscoveryUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -14,7 +15,9 @@ object DiscoveryRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     private val activityTrackingRepository = ActivityTrackingRepository()
+    private val activityRepository = ActivityRepository()
     private var firebaseItems: List<DiscoveryItem> = emptyList()
+    private var activityItems: List<DiscoveryItem> = emptyList()
     private var externalItems: List<DiscoveryItem> = emptyList()
     private var externalStatusMessage: String = ""
 
@@ -309,6 +312,11 @@ object DiscoveryRepository {
             .ifEmpty { allItems().take(3) }
     }
 
+    // Returns Google Places studios that survived duplicate filtering.
+    fun externalStudioItems(): List<DiscoveryItem> {
+        return allItems().filter { it.source == DiscoveryItem.SOURCE_GOOGLE }
+    }
+
     // Filters discovery items by search fields.
     fun search(
         style: String,
@@ -389,7 +397,9 @@ object DiscoveryRepository {
                         ownerUid = document.firstNonBlankString("ownerUid"),
                         source = DiscoveryItem.SOURCE_INTERNAL,
                         googlePlaceId = googlePlaceId,
-                        address = document.firstNonBlankString("address")
+                        address = document.firstNonBlankString("address"),
+                        coverImageUrl = document.firstNonBlankString("coverImageUrl", "imageUrl", "photoUrl"),
+                        displayType = "studio"
                     )
                 }
                 onSuccess(firebaseItems)
@@ -397,6 +407,20 @@ object DiscoveryRepository {
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to load studios")
             }
+    }
+
+    // Loads published professional activities and adapts them to current Discover cards.
+    fun loadPublishedActivities(
+        onSuccess: (List<DiscoveryItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        activityRepository.loadPublishedActivities(
+            onSuccess = { activities ->
+                activityItems = activityRepository.toDiscoveryItems(activities)
+                onSuccess(activityItems)
+            },
+            onFailure = onFailure
+        )
     }
 
     fun loadExternalStudios(
@@ -517,46 +541,9 @@ object DiscoveryRepository {
 
     // Returns loaded Firestore and external discovery items.
     private fun allItems(): List<DiscoveryItem> {
-        val internal = firebaseItems
+        val internal = firebaseItems + activityItems
         if (externalItems.isEmpty()) return internal
-        val internalGoogleIds = internal.mapNotNull { it.googlePlaceId.takeIf(String::isNotBlank) }.toSet()
-        val internalKeys = internal.map { duplicateKey(it) }.toSet()
-        val filteredExternal = externalItems.filterNot { external ->
-            external.googlePlaceId in internalGoogleIds ||
-                duplicateKey(external) in internalKeys ||
-                internal.any { internalItem -> looksLikeSameStudio(internalItem, external) }
-        }
-        return (internal + filteredExternal).sortedWith(
-            compareByDescending<DiscoveryItem> { it.source == DiscoveryItem.SOURCE_INTERNAL }
-                .thenByDescending { it.ownerUid.isNotBlank() || it.claimStatus.equals("CLAIMED", ignoreCase = true) }
-                .thenBy { it.distanceMeters ?: Double.MAX_VALUE }
-                .thenByDescending { if (it.source == DiscoveryItem.SOURCE_GOOGLE) it.rating ?: 0.0 else 10.0 }
-        )
-    }
-
-    private fun duplicateKey(item: DiscoveryItem): String {
-        return "${normalize(item.studio)}|${normalize(item.address.ifBlank { item.location })}"
-    }
-
-    private fun looksLikeSameStudio(internal: DiscoveryItem, external: DiscoveryItem): Boolean {
-        if (normalize(internal.studio) != normalize(external.studio)) return false
-        val internalLat = internal.latitude
-        val internalLng = internal.longitude
-        val externalLat = external.latitude
-        val externalLng = external.longitude
-        if (internalLat != null && internalLng != null && externalLat != null && externalLng != null) {
-            val distance = FloatArray(1)
-            Location.distanceBetween(internalLat, internalLng, externalLat, externalLng, distance)
-            return distance[0] <= DUPLICATE_DISTANCE_METERS
-        }
-        return normalize(internal.location).isNotBlank() &&
-            normalize(internal.location) == normalize(external.location)
-    }
-
-    private fun normalize(value: String): String {
-        return value.lowercase()
-            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-            .trim()
+        return StudioDiscoveryUtils.mergeInternalAndExternal(internal, externalItems)
     }
 
     // Maps a discovery item to the activity target type stored in Firebase.
@@ -579,6 +566,4 @@ object DiscoveryRepository {
             getString(field)?.takeIf { it.isNotBlank() }
         }.orEmpty()
     }
-
-    private const val DUPLICATE_DISTANCE_METERS = 120
 }

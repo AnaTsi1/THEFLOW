@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Location
 import com.ana.theflow.BuildConfig
 import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.utilities.StudioDiscoveryUtils
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
@@ -33,11 +34,11 @@ class GooglePlacesStudioDataSource(
     ) {
         val client = placesClient
         if (client == null) {
-            onSuccess(emptyList())
+            onFailure("Google Places is not configured yet.")
             return
         }
 
-        val queries = buildQueries(query, city)
+        val queries = StudioDiscoveryUtils.buildExternalStudioQueries(query, city)
         if (queries.isEmpty()) {
             onSuccess(emptyList())
             return
@@ -68,7 +69,7 @@ class GooglePlacesStudioDataSource(
                     if (completed) return@addOnSuccessListener
                     response.places
                         .mapNotNull { place -> place.toDiscoveryItem(city, location) }
-                        .filter { it.isRelevantDanceStudio() }
+                        .filter { StudioDiscoveryUtils.isRelevantDanceStudio(it) }
                         .forEach { item ->
                             collected.putIfAbsent(item.googlePlaceId, item)
                         }
@@ -100,6 +101,10 @@ class GooglePlacesStudioDataSource(
             "dancing school",
             "ballet school",
             "hip-hop studio",
+            "dance academy",
+            "סטודיו לריקוד",
+            "בית ספר לריקוד",
+            "סטודיו למחול",
             "סטודיו לריקוד",
             "בית ספר לריקוד",
             "סטודיו למחול"
@@ -123,7 +128,8 @@ class GooglePlacesStudioDataSource(
             Place.Field.BUSINESS_STATUS,
             Place.Field.INTERNATIONAL_PHONE_NUMBER,
             Place.Field.WEBSITE_URI,
-            Place.Field.GOOGLE_MAPS_URI
+            Place.Field.GOOGLE_MAPS_URI,
+            Place.Field.PHOTO_METADATAS
         )
     }
 
@@ -166,7 +172,9 @@ class GooglePlacesStudioDataSource(
             ratingCount = userRatingCount,
             phoneNumber = internationalPhoneNumber.orEmpty(),
             websiteUrl = websiteUri?.toString().orEmpty(),
-            googleMapsUrl = googleMapsUri?.toString().orEmpty()
+            googleMapsUrl = googleMapsUri?.toString().orEmpty(),
+            attributionHtml = photoMetadatas?.firstOrNull()?.attributions.orEmpty(),
+            displayType = "google_place"
         )
     }
 
@@ -176,6 +184,20 @@ class GooglePlacesStudioDataSource(
             .lowercase()
         val negativeTerms = listOf("restaurant", "bar", "night club", "club", "clothing", "shoes")
         if (negativeTerms.any { it in haystack }) return false
+        val positiveTerms = listOf(
+            "dance",
+            "dancing",
+            "ballet",
+            "hip",
+            "studio",
+            "school",
+            "academy",
+            "מחול",
+            "ריקוד",
+            "ריקודים",
+            "סטודיו"
+        )
+        if (positiveTerms.any { it in haystack }) return true
         return listOf("dance", "dancing", "ballet", "hip", "מחול", "ריקוד").any { it in haystack }
     }
 
@@ -190,7 +212,7 @@ class GooglePlacesStudioDataSource(
     }
 
     companion object {
-        private const val MAX_QUERY_COUNT = 4
+        private const val MAX_QUERY_COUNT = 8
         private const val SEARCH_RADIUS_METERS = 30000.0
     }
 }

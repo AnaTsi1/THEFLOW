@@ -97,11 +97,13 @@ class RegisterFragment : Fragment() {
         val dancerSelected = selectedRole == Constants.UserRole.DANCER
         setupScreenTitle()
         binding.registerBTNDancer.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_button_primary_selected else com.ana.theflow.R.drawable.bg_button_secondary
+            if (dancerSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
         )
         binding.registerBTNStudioManager.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_button_secondary else com.ana.theflow.R.drawable.bg_button_primary_selected
+            if (dancerSelected) com.ana.theflow.R.drawable.bg_flow_button_secondary else com.ana.theflow.R.drawable.bg_flow_button_primary
         )
+        binding.registerBTNDancer.setTextColor(requireContext().getColor(if (dancerSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
+        binding.registerBTNStudioManager.setTextColor(requireContext().getColor(if (dancerSelected) com.ana.theflow.R.color.flow_brand else com.ana.theflow.R.color.flow_surface))
         binding.registerBTNDancer.setTypeface(null, if (dancerSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         binding.registerBTNStudioManager.setTypeface(null, if (dancerSelected) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
     }

@@ -6,7 +6,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
+import android.widget.EditText
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
@@ -52,6 +54,9 @@ class SettingsFragment : Fragment() {
         }
         binding.settingsBTNLogout.setOnClickListener {
             logout()
+        }
+        binding.settingsBTNDeleteAccount.setOnClickListener {
+            confirmAccountDeletionRequest()
         }
         setupSettingsListeners()
         loadAdminAccess()
@@ -227,6 +232,41 @@ class SettingsFragment : Fragment() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(intent)
+    }
+
+    // Requests account deletion only after an explicit in-app confirmation.
+    private fun confirmAccountDeletionRequest() {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.settings_delete_account_hint)
+            setTextColor(requireContext().getColor(R.color.flow_ink))
+            setHintTextColor(requireContext().getColor(R.color.flow_text_muted))
+            setBackgroundResource(R.drawable.bg_flow_input)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_delete_account_title)
+            .setMessage(R.string.settings_delete_account_message)
+            .setView(input)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.settings_delete_account) { _, _ ->
+                if (input.text.toString().trim() == "DELETE") {
+                    requestAccountDeletion()
+                } else {
+                    Toast.makeText(requireContext(), R.string.settings_delete_account_hint, Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
+    }
+
+    // Stores the deletion request for admin/backend cleanup.
+    private fun requestAccountDeletion() {
+        userRepository.requestAccountDeletion(
+            onSuccess = {
+                Toast.makeText(requireContext(), R.string.settings_delete_account_confirmed, Toast.LENGTH_SHORT).show()
+            },
+            onFailure = { error ->
+                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     // Clears the fragment binding when the view is destroyed.

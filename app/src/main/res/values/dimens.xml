@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="screen_padding">14dp</dimen>
+    <dimen name="feed_gap">12dp</dimen>
+    <dimen name="post_card_radius">12dp</dimen>
+    <dimen name="post_card_padding">14dp</dimen>
+    <dimen name="avatar_size">42dp</dimen>
+    <dimen name="feed_media_height">260dp</dimen>
+    <dimen name="bottom_nav_height">64dp</dimen>
+    <dimen name="discover_screen_padding">18dp</dimen>
+    <dimen name="discover_section_gap">18dp</dimen>
+    <dimen name="discover_card_gap">12dp</dimen>
+    <dimen name="discover_card_radius">16dp</dimen>
+    <dimen name="discover_card_padding">16dp</dimen>
+    <dimen name="discover_touch_size">44dp</dimen>
+    <dimen name="discover_map_height">360dp</dimen>
+    <dimen name="flow_screen_padding">18dp</dimen>
+    <dimen name="flow_gap_small">8dp</dimen>
+    <dimen name="flow_gap_medium">12dp</dimen>
+    <dimen name="flow_gap_large">18dp</dimen>
+    <dimen name="flow_section_gap">18dp</dimen>
+    <dimen name="flow_card_gap">12dp</dimen>
+    <dimen name="flow_card_radius">16dp</dimen>
+    <dimen name="flow_card_padding">16dp</dimen>
+    <dimen name="flow_touch_size">44dp</dimen>
+    <dimen name="flow_icon_size">22dp</dimen>
+    <dimen name="flow_title_text">28sp</dimen>
+    <dimen name="flow_section_title_text">18sp</dimen>
+    <dimen name="flow_body_text">14sp</dimen>
+    <dimen name="flow_meta_text">12sp</dimen>
+</resources>

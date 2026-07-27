@@ -14,6 +14,10 @@ object Constants {
         const val CONVERSATIONS = "conversations"
         const val MESSAGES = "messages"
         const val NOTIFICATIONS = "notifications"
+        const val CONTENT_REPORTS = "contentReports"
+        const val ACCOUNT_DELETION_REQUESTS = "accountDeletionRequests"
+        const val ACTIVITIES = "activities"
+        const val REVIEWS = "reviews"
     }
 
     enum class UserRole(val firestoreValue: String) {

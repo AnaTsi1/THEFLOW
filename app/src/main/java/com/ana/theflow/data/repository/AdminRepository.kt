@@ -2,6 +2,7 @@ package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.professional.ProfessionalApplication
 import com.ana.theflow.data.model.notification.InAppNotification
+import com.ana.theflow.data.model.report.ContentReport
 import com.ana.theflow.data.model.studio.StudioClaim
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.Timestamp
@@ -25,16 +26,19 @@ class AdminRepository {
             onSuccess = {
                 var claims: List<StudioClaim>? = null
                 var applications: List<ProfessionalApplication>? = null
+                var reports: List<ContentReport>? = null
                 val warnings = mutableListOf<String>()
 
                 fun finishIfReady() {
                     val loadedClaims = claims
                     val loadedApplications = applications
-                    if (loadedClaims != null && loadedApplications != null) {
+                    val loadedReports = reports
+                    if (loadedClaims != null && loadedApplications != null && loadedReports != null) {
                         onSuccess(
                             AdminReviewData(
                                 studioClaims = loadedClaims,
                                 professionalApplications = loadedApplications,
+                                contentReports = loadedReports,
                                 warnings = warnings
                             )
                         )
@@ -74,6 +78,51 @@ class AdminRepository {
                         warnings.add("Professional applications could not load: ${error.message ?: "permission problem"}")
                         applications = emptyList()
                         finishIfReady()
+                    }
+
+                db.collection(Constants.Collections.CONTENT_REPORTS)
+                    .whereEqualTo("status", "open")
+                    .get()
+                    .addOnSuccessListener { reportSnapshot ->
+                        reports = reportSnapshot.documents.mapNotNull { document ->
+                            document.toObject(ContentReport::class.java)?.copy(reportId = document.id)
+                        }.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                        finishIfReady()
+                    }
+                    .addOnFailureListener { error ->
+                        warnings.add("Content reports could not load: ${error.message ?: "permission problem"}")
+                        reports = emptyList()
+                        finishIfReady()
+                    }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Marks a content report as resolved after admin review.
+    fun resolveContentReport(
+        report: ContentReport,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        ensureAdmin(
+            onSuccess = {
+                if (report.reportId.isBlank()) {
+                    onFailure("Missing report id")
+                    return@ensureAdmin
+                }
+                db.collection(Constants.Collections.CONTENT_REPORTS)
+                    .document(report.reportId)
+                    .update(
+                        mapOf(
+                            "status" to "resolved",
+                            "resolvedAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                    .addOnSuccessListener { onSuccess() }
+                    .addOnFailureListener { error ->
+                        onFailure(error.message ?: "Failed to resolve report")
                     }
             },
             onFailure = onFailure
@@ -157,11 +206,12 @@ class AdminRepository {
                             SetOptions.merge()
                         )
                     }
+                    val managedStudioId = studioRef.id
                     batch.set(
                         userRef,
                         mapOf(
                             "role" to Constants.UserRole.STUDIO_MANAGER.firestoreValue,
-                            "managedStudioIds" to FieldValue.arrayUnion(claim.studioId),
+                            "managedStudioIds" to FieldValue.arrayUnion(managedStudioId),
                             "professionalBadges" to FieldValue.arrayUnion("Studio Manager")
                         ),
                         SetOptions.merge()
@@ -192,6 +242,7 @@ class AdminRepository {
                 }
 
                 val claimRef = db.collection(Constants.Collections.STUDIO_CLAIMS).document(claim.id)
+                val isExternalClaim = claim.googlePlaceId.isNotBlank() && claim.studioId.startsWith("google_")
                 val studioRef = db.collection(Constants.Collections.STUDIOS).document(claim.studioId)
 
                 db.runBatch { batch ->
@@ -203,7 +254,7 @@ class AdminRepository {
                             "reviewedByUid" to adminUid
                         )
                     )
-                    if (claim.studioId.isNotBlank()) {
+                    if (claim.studioId.isNotBlank() && !isExternalClaim) {
                         batch.set(
                             studioRef,
                             mapOf(
@@ -385,6 +436,7 @@ class AdminRepository {
     data class AdminReviewData(
         val studioClaims: List<StudioClaim> = emptyList(),
         val professionalApplications: List<ProfessionalApplication> = emptyList(),
+        val contentReports: List<ContentReport> = emptyList(),
         val warnings: List<String> = emptyList()
     )
 }

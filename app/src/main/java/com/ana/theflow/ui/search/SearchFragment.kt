@@ -1,18 +1,24 @@
+// Search screen for discovery items, map results, and social posts.
 package com.ana.theflow.ui.search
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.ana.theflow.R
 import com.ana.theflow.MainActivity
 import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
+import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.databinding.FragmentSearchBinding
 import com.ana.theflow.ui.common.DiscoveryCardRenderer
+import com.ana.theflow.ui.common.PostCardRenderer
 import com.ana.theflow.utilities.CityOptions
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -23,12 +29,14 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MarkerOptions
 
+// Coordinates text filters, map filters, external studio lookup, and post search.
 class SearchFragment : Fragment(), OnMapReadyCallback {
 
     private var _binding: FragmentSearchBinding? = null
     private val binding get() = _binding!!
     private val activityTrackingRepository = ActivityTrackingRepository()
     private val userRepository = UserRepository()
+    private val postRepository = PostRepository()
     private var googleMap: GoogleMap? = null
     private var currentResults: List<DiscoveryItem> = emptyList()
     private var lastExternalSearchKey: String = ""
@@ -134,7 +142,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             danceStyles = listOf(style).filter { it.isNotBlank() },
             location = location
         )
-        renderResults(results, "Search results", "Search results")
+        renderResults(results, "Search results", "Search results", query)
         loadExternalSearchResults(
             query = listOf(query, style, binding.searchEDTStudio.text.toString()).filter { it.isNotBlank() }.joinToString(" "),
             city = location,
@@ -156,7 +164,8 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         renderResults(
             items = results,
             label = if (query.isBlank()) "Recommended from your dance profile" else "Search results",
-            title = if (query.isBlank()) "Recommended search" else "Search results"
+            title = if (query.isBlank()) "Recommended search" else "Search results",
+            postQuery = query
         )
         loadExternalSearchResults(
             query = query,
@@ -194,7 +203,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             location = location
         )
 
-        renderResults(results, "Map filtered results", "Search results")
+        renderResults(results, "Map filtered results", "Search results", listOf(style, level, location).filter { it.isNotBlank() }.joinToString(" "))
         loadExternalSearchResults(
             query = style,
             city = location,
@@ -235,7 +244,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     }
 
     // Shows search results in the list and map.
-    private fun renderResults(items: List<DiscoveryItem>, label: String, title: String) {
+    private fun renderResults(items: List<DiscoveryItem>, label: String, title: String, postQuery: String = "") {
         currentResults = items
         binding.searchLBLRecommendationsTitle.text = title
         binding.searchLBLResultSummary.text = "$label / ${items.size} results"
@@ -259,6 +268,55 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
                 }
             )
         }
+        renderPostSearchResults(postQuery)
+    }
+
+    // Loads matching public posts and appends them below discovery results.
+    private fun renderPostSearchResults(query: String) {
+        if (query.trim().isBlank()) return
+        postRepository.searchPosts(
+            query = query,
+            onSuccess = { posts ->
+                if (_binding == null) return@searchPosts
+                if (posts.isEmpty()) return@searchPosts
+                binding.searchLAYResults.addView(sectionTitle("Posts and events"))
+                posts.forEach { post -> addPostResult(post) }
+                binding.searchLBLResultSummary.text =
+                    "${binding.searchLBLResultSummary.text} / ${posts.size} posts"
+            },
+            onFailure = {
+                if (_binding == null) return@searchPosts
+            }
+        )
+    }
+
+    // Adds one matching social post to search results.
+    private fun addPostResult(post: Post) {
+        PostCardRenderer.addPostCard(
+            parent = binding.searchLAYResults,
+            post = post,
+            onOpen = { (requireActivity() as MainActivity).openPost(it.postId) },
+            onMediaOpen = { url, mediaType ->
+                (requireActivity() as MainActivity).openMediaViewer(url, mediaType)
+            },
+            onAuthorOpen = { authorId ->
+                (requireActivity() as MainActivity).openUserProfile(authorId)
+            }
+        )
+    }
+
+    private fun sectionTitle(title: String): TextView {
+        return TextView(requireContext()).apply {
+            text = title
+            setTextColor(requireContext().getColor(R.color.text_primary))
+            textSize = 18f
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, 14.dp(), 0, 4.dp())
+        }
+    }
+
+    private fun Int.dp(): Int {
+        return (this * resources.displayMetrics.density).toInt()
     }
 
     // Shows or hides a section.

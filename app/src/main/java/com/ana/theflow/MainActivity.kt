@@ -24,6 +24,8 @@ import com.ana.theflow.ui.messaging.ChatFragment
 import com.ana.theflow.ui.messaging.ConversationsFragment
 import com.ana.theflow.ui.notifications.NotificationsFragment
 import com.ana.theflow.ui.onboarding.OnboardingFragment
+import com.ana.theflow.ui.profile.FollowListFragment
+import com.ana.theflow.ui.profile.MyEventsFragment
 import com.ana.theflow.ui.profile.ProfileMediaFragment
 import com.ana.theflow.ui.profile.ProfileFragment
 import com.ana.theflow.ui.profile.SavedItemsFragment
@@ -158,6 +160,16 @@ class MainActivity : AppCompatActivity() {
         openFragment(ProfileFragment.newInstance(uid), addToBackStack = true)
     }
 
+    fun openFollowers(uid: String) {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(FollowListFragment.followers(uid), addToBackStack = true)
+    }
+
+    fun openFollowing(uid: String) {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(FollowListFragment.following(uid), addToBackStack = true)
+    }
+
     fun openConversations() {
         binding.mainLAYBottomNav.visibility = View.VISIBLE
         openFragment(ConversationsFragment(), addToBackStack = true)
@@ -218,6 +230,11 @@ class MainActivity : AppCompatActivity() {
     fun openSavedItems() {
         binding.mainLAYBottomNav.visibility = View.VISIBLE
         openFragment(SavedItemsFragment(), addToBackStack = true)
+    }
+
+    fun openMyEvents() {
+        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        openFragment(MyEventsFragment(), addToBackStack = true)
     }
 
     // Opens one photo or video in a larger viewer.
@@ -311,15 +328,24 @@ class MainActivity : AppCompatActivity() {
 
     // Highlights the selected bottom navigation tab.
     private fun markSelectedTab(tab: AppTab) {
-        binding.mainNavHome.setTextColor(getTabColor(tab == AppTab.HOME))
-        binding.mainNavDiscover.setTextColor(getTabColor(tab == AppTab.DISCOVER))
-        binding.mainNavProfile.setTextColor(getTabColor(tab == AppTab.PROFILE))
+        renderNavItem(
+            label = binding.mainLabelHome,
+            icon = binding.mainIconHome,
+            isSelected = tab == AppTab.HOME
+        )
+        renderNavItem(
+            label = binding.mainLabelDiscover,
+            icon = binding.mainIconDiscover,
+            isSelected = tab == AppTab.DISCOVER
+        )
+        renderNavItem(
+            label = binding.mainLabelProfile,
+            icon = binding.mainIconProfile,
+            isSelected = tab == AppTab.PROFILE
+        )
         binding.mainNavHome.alpha = if (tab == AppTab.HOME) 1f else 0.72f
         binding.mainNavDiscover.alpha = if (tab == AppTab.DISCOVER) 1f else 0.72f
         binding.mainNavProfile.alpha = if (tab == AppTab.PROFILE) 1f else 0.72f
-        binding.mainNavHome.setTypeface(null, if (tab == AppTab.HOME) Typeface.BOLD else Typeface.NORMAL)
-        binding.mainNavDiscover.setTypeface(null, if (tab == AppTab.DISCOVER) Typeface.BOLD else Typeface.NORMAL)
-        binding.mainNavProfile.setTypeface(null, if (tab == AppTab.PROFILE) Typeface.BOLD else Typeface.NORMAL)
         selectedTabView(tab).animate()
             .scaleX(1.04f)
             .scaleY(1.04f)
@@ -330,10 +356,11 @@ class MainActivity : AppCompatActivity() {
             .start()
     }
 
-    // Returns the color for a selected or unselected tab.
-    private fun getTabColor(isSelected: Boolean): Int {
-        val colorRes = if (isSelected) R.color.neon_pink else R.color.text_muted
-        return getColor(colorRes)
+    private fun renderNavItem(label: android.widget.TextView, icon: android.widget.ImageView, isSelected: Boolean) {
+        val color = getColor(if (isSelected) R.color.neon_purple else R.color.text_secondary)
+        label.setTextColor(color)
+        icon.setColorFilter(color)
+        label.setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
     }
 
     private fun selectedTabView(tab: AppTab): View {

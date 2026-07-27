@@ -1,5 +1,7 @@
+// Repository for user profiles, onboarding preferences, and social follow state.
 package com.ana.theflow.data.repository
 
+import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.utilities.CityOptions
 import com.ana.theflow.utilities.Constants
@@ -8,10 +10,12 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 
+// Keeps screens isolated from Firestore document layout for user-owned data.
 class UserRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val notificationRepository = NotificationRepository()
 
     // Creates a Firestore profile for a new user.
     fun createUserProfile(
@@ -301,12 +305,498 @@ class UserRepository {
             }
     }
 
+    // Checks if the signed-in user currently follows a target user.
+    fun isFollowingUser(
+        targetUser: User,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null || targetUser.uid.isBlank() || uid == targetUser.uid) {
+            onSuccess(false)
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection(followingCollectionFor(targetUser))
+            .document(targetUser.uid)
+            .get()
+            .addOnSuccessListener { document -> onSuccess(document.exists()) }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load follow state")
+            }
+    }
+
+    // Toggles follow state for a target user and keeps both sides of the relationship in sync.
+    fun toggleFollowUser(
+        targetUser: User,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+        if (targetUser.uid.isBlank() || targetUser.uid == uid) {
+            onFailure("Profile cannot be followed")
+            return
+        }
+
+        getUserByUid(
+            uid = uid,
+            onSuccess = { viewer ->
+                toggleFollowDocuments(
+                    viewer = viewer,
+                    targetUser = targetUser,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure
+                )
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Loads users following a profile.
+    fun loadFollowers(
+        uid: String,
+        onSuccess: (List<User>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        loadUsersFromRelationshipCollection(
+            ownerUid = uid,
+            collectionName = FOLLOWERS_COLLECTION,
+            idFields = listOf("followerId", "userId"),
+            onSuccess = onSuccess,
+            onFailure = onFailure
+        )
+    }
+
+    // Loads users followed by a profile across the existing typed following collections.
+    fun loadFollowing(
+        uid: String,
+        onSuccess: (List<User>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val collectionNames = listOf(
+            FOLLOWING_DANCERS_COLLECTION,
+            FOLLOWING_TEACHERS_COLLECTION,
+            FOLLOWING_STUDIOS_COLLECTION
+        )
+        var pendingLoads = collectionNames.size
+        val userIds = linkedSetOf<String>()
+        var completed = false
+
+        collectionNames.forEach { collectionName ->
+            db.collection(Constants.Collections.USERS)
+                .document(uid)
+                .collection(collectionName)
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    if (completed) return@addOnSuccessListener
+                    snapshot.documents.forEach { document ->
+                        val targetId = document.getString("targetId")
+                            ?: document.getString("userId")
+                            ?: document.id
+                        if (targetId.isNotBlank()) userIds.add(targetId)
+                    }
+                    pendingLoads -= 1
+                    if (pendingLoads == 0) {
+                        completed = true
+                        loadUsersByIds(userIds.toList(), onSuccess, onFailure)
+                    }
+                }
+                .addOnFailureListener { error ->
+                    if (completed) return@addOnFailureListener
+                    completed = true
+                    onFailure(error.message ?: "Failed to load following")
+                }
+        }
+    }
+
+    // Loads follower and following counts for profile display.
+    fun loadFollowCounts(
+        uid: String,
+        onSuccess: (followers: Int, following: Int) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        if (uid.isBlank()) {
+            onSuccess(0, 0)
+            return
+        }
+
+        var followersCount = 0
+        var followingCount = 0
+        var pendingLoads = 4
+        var completed = false
+
+        fun finishOne() {
+            if (completed) return
+            pendingLoads -= 1
+            if (pendingLoads == 0) {
+                completed = true
+                onSuccess(followersCount, followingCount)
+            }
+        }
+
+        fun fail(message: String) {
+            if (completed) return
+            completed = true
+            onFailure(message)
+        }
+
+        db.collection(Constants.Collections.USERS).document(uid).collection(FOLLOWERS_COLLECTION)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                followersCount = snapshot.size()
+                finishOne()
+            }
+            .addOnFailureListener { error -> fail(error.message ?: "Failed to load followers") }
+
+        listOf(FOLLOWING_DANCERS_COLLECTION, FOLLOWING_TEACHERS_COLLECTION, FOLLOWING_STUDIOS_COLLECTION)
+            .forEach { collectionName ->
+                db.collection(Constants.Collections.USERS).document(uid).collection(collectionName)
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        followingCount += snapshot.size()
+                        finishOne()
+                    }
+                    .addOnFailureListener { error -> fail(error.message ?: "Failed to load following") }
+            }
+    }
+
+    // Checks whether the signed-in user blocked a target profile.
+    fun isUserBlocked(
+        targetUid: String,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null || targetUid.isBlank() || targetUid == uid) {
+            onSuccess(false)
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection(BLOCKED_USERS_COLLECTION)
+            .document(targetUid)
+            .get()
+            .addOnSuccessListener { document -> onSuccess(document.exists()) }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load block state")
+            }
+    }
+
+    // Toggles a block relationship and removes follow relationships in both directions when blocking.
+    fun toggleBlockUser(
+        targetUser: User,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+        if (targetUser.uid.isBlank() || targetUser.uid == uid) {
+            onFailure("Profile cannot be blocked")
+            return
+        }
+
+        val blockedRef = db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection(BLOCKED_USERS_COLLECTION)
+            .document(targetUser.uid)
+
+        blockedRef.get()
+            .addOnSuccessListener { snapshot ->
+                val isBlocked = snapshot.exists()
+                val batch = db.batch()
+                if (isBlocked) {
+                    batch.delete(blockedRef)
+                } else {
+                    batch.set(
+                        blockedRef,
+                        mapOf(
+                            "userId" to targetUser.uid,
+                            "targetName" to targetUser.fullName(),
+                            "profileImageUrl" to targetUser.profileImageUrl,
+                            "createdAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                    deleteFollowEdges(batch, uid, targetUser)
+                }
+                batch.commit()
+                    .addOnSuccessListener { onSuccess(!isBlocked) }
+                    .addOnFailureListener { error ->
+                        onFailure(error.message ?: "Failed to update block")
+                    }
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load block state")
+            }
+    }
+
+    // Loads ids blocked by the signed-in user for feed and comment filtering.
+    fun loadBlockedUserIds(
+        onSuccess: (Set<String>) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onSuccess(emptySet())
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .collection(BLOCKED_USERS_COLLECTION)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                onSuccess(
+                    snapshot.documents.map { document ->
+                        document.getString("userId").orEmpty().ifBlank { document.id }
+                    }.filter { it.isNotBlank() }.toSet()
+                )
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load blocked users")
+            }
+    }
+
+    // Creates an auditable account deletion request for backend/admin processing.
+    fun requestAccountDeletion(
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        db.collection(Constants.Collections.ACCOUNT_DELETION_REQUESTS)
+            .document(uid)
+            .set(
+                mapOf(
+                    "uid" to uid,
+                    "email" to (auth.currentUser?.email ?: ""),
+                    "status" to "requested",
+                    "requestedAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to request account deletion")
+            }
+    }
+
+    // Writes or removes follow documents after current follow state has been read.
+    private fun toggleFollowDocuments(
+        viewer: User,
+        targetUser: User,
+        onSuccess: (Boolean) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val followingRef = db.collection(Constants.Collections.USERS)
+            .document(viewer.uid)
+            .collection(followingCollectionFor(targetUser))
+            .document(targetUser.uid)
+        val followerRef = db.collection(Constants.Collections.USERS)
+            .document(targetUser.uid)
+            .collection(FOLLOWERS_COLLECTION)
+            .document(viewer.uid)
+
+        followingRef.get()
+            .addOnSuccessListener { snapshot ->
+                val isFollowing = snapshot.exists()
+                val batch = db.batch()
+                if (isFollowing) {
+                    batch.delete(followingRef)
+                    batch.delete(followerRef)
+                } else {
+                    batch.set(followingRef, targetUser.followingSummary())
+                    batch.set(followerRef, viewer.followerSummary())
+                }
+                batch.commit()
+                    .addOnSuccessListener {
+                        if (!isFollowing) createFollowNotification(viewer, targetUser)
+                        onSuccess(!isFollowing)
+                    }
+                    .addOnFailureListener { error ->
+                        onFailure(error.message ?: "Failed to update follow")
+                    }
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load follow state")
+            }
+    }
+
     // Converts Firestore list values into a list of strings.
     private fun stringList(value: Any?): List<String> {
         return (value as? List<*>)
             ?.mapNotNull { it as? String }
             ?.filter { it.isNotBlank() }
             .orEmpty()
+    }
+
+    // Chooses the existing follow collection used by the following feed.
+    private fun followingCollectionFor(user: User): String {
+        return when {
+            user.role.equals(Constants.UserRole.STUDIO_MANAGER.firestoreValue, ignoreCase = true) -> "followingStudios"
+            user.verifiedTeacher || user.verifiedChoreographer -> "followingTeachers"
+            else -> "followingDancers"
+        }
+    }
+
+    // Builds a compact target document for the current user's following collection.
+    private fun User.followingSummary(): Map<String, Any> {
+        return mapOf(
+            "targetId" to uid,
+            "userId" to uid,
+            "targetName" to fullName(),
+            "targetRole" to role,
+            "profileImageUrl" to profileImageUrl,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+    }
+
+    // Builds a compact viewer document for the target user's followers collection.
+    private fun User.followerSummary(): Map<String, Any> {
+        return mapOf(
+            "followerId" to uid,
+            "userId" to uid,
+            "followerName" to fullName(),
+            "role" to role,
+            "profileImageUrl" to profileImageUrl,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+    }
+
+    // Sends a deduplicated in-app notification for a new follow.
+    private fun createFollowNotification(viewer: User, targetUser: User) {
+        notificationRepository.createNotification(
+            recipientUid = targetUser.uid,
+            type = InAppNotification.Types.FOLLOW,
+            actorId = viewer.uid,
+            actorName = viewer.fullName(),
+            actorProfileImageUrl = viewer.profileImageUrl,
+            title = "New follower",
+            message = "${viewer.fullName()} started following you.",
+            dedupeId = "follow_${targetUser.uid}_${viewer.uid}"
+        )
+    }
+
+    private fun User.fullName(): String {
+        return "${firstName} ${lastName}".trim().ifBlank { "Dancer" }
+    }
+
+    // Removes follow documents related to a newly blocked user.
+    private fun deleteFollowEdges(
+        batch: com.google.firebase.firestore.WriteBatch,
+        viewerUid: String,
+        targetUser: User
+    ) {
+        val targetUid = targetUser.uid
+        batch.delete(
+            db.collection(Constants.Collections.USERS)
+                .document(viewerUid)
+                .collection(followingCollectionFor(targetUser))
+                .document(targetUid)
+        )
+        batch.delete(
+            db.collection(Constants.Collections.USERS)
+                .document(targetUid)
+                .collection(FOLLOWERS_COLLECTION)
+                .document(viewerUid)
+        )
+        listOf(FOLLOWING_DANCERS_COLLECTION, FOLLOWING_TEACHERS_COLLECTION, FOLLOWING_STUDIOS_COLLECTION)
+            .forEach { collectionName ->
+                batch.delete(
+                    db.collection(Constants.Collections.USERS)
+                        .document(targetUid)
+                        .collection(collectionName)
+                        .document(viewerUid)
+                )
+            }
+        batch.delete(
+            db.collection(Constants.Collections.USERS)
+                .document(viewerUid)
+                .collection(FOLLOWERS_COLLECTION)
+                .document(targetUid)
+        )
+    }
+
+    // Resolves user documents from relationship ids.
+    private fun loadUsersFromRelationshipCollection(
+        ownerUid: String,
+        collectionName: String,
+        idFields: List<String>,
+        onSuccess: (List<User>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (ownerUid.isBlank()) {
+            onSuccess(emptyList())
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(ownerUid)
+            .collection(collectionName)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val userIds = snapshot.documents.mapNotNull { document ->
+                    idFields.firstNotNullOfOrNull { field -> document.getString(field)?.takeIf { it.isNotBlank() } }
+                        ?: document.id
+                }.filter { it.isNotBlank() }
+                loadUsersByIds(userIds, onSuccess, onFailure)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load users")
+            }
+    }
+
+    // Loads individual users by id and returns them in the source order.
+    private fun loadUsersByIds(
+        userIds: List<String>,
+        onSuccess: (List<User>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val ids = userIds.distinct().filter { it.isNotBlank() }
+        if (ids.isEmpty()) {
+            onSuccess(emptyList())
+            return
+        }
+
+        val order = ids.withIndex().associate { it.value to it.index }
+        var pendingLoads = ids.size
+        val users = mutableListOf<User>()
+        var completed = false
+        ids.forEach { uid ->
+            getUserByUid(
+                uid = uid,
+                onSuccess = { user ->
+                    if (!completed) {
+                        users.add(user)
+                        pendingLoads -= 1
+                        if (pendingLoads == 0) {
+                            completed = true
+                            onSuccess(users.sortedBy { order[it.uid] ?: Int.MAX_VALUE })
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    if (!completed) {
+                        completed = true
+                        onFailure(error)
+                    }
+                }
+            )
+        }
     }
 
     data class PreferenceSettings(
@@ -317,4 +807,12 @@ class UserRepository {
         val preferredTeachers: List<String> = emptyList(),
         val preferredDancers: List<String> = emptyList()
     )
+
+    private companion object {
+        const val FOLLOWERS_COLLECTION = "followers"
+        const val BLOCKED_USERS_COLLECTION = "blockedUsers"
+        const val FOLLOWING_DANCERS_COLLECTION = "followingDancers"
+        const val FOLLOWING_TEACHERS_COLLECTION = "followingTeachers"
+        const val FOLLOWING_STUDIOS_COLLECTION = "followingStudios"
+    }
 }

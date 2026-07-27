@@ -24,7 +24,11 @@ data class DiscoveryItem(
     val phoneNumber: String = "",
     val websiteUrl: String = "",
     val googleMapsUrl: String = "",
-    val attributionHtml: String = ""
+    val attributionHtml: String = "",
+    val coverImageUrl: String = "",
+    val priceText: String = "",
+    val dateTimeText: String = "",
+    val displayType: String = ""
 ) {
     companion object {
         const val SOURCE_INTERNAL = "internal"

@@ -5,7 +5,7 @@ import com.ana.theflow.data.model.discovery.DiscoveryItem
 
 object StudioDiscoveryUtils {
     private const val DUPLICATE_DISTANCE_METERS = 120
-    private const val MAX_QUERY_COUNT = 4
+    private const val MAX_QUERY_COUNT = 8
 
     fun buildExternalStudioQueries(query: String, city: String): List<String> {
         val locationSuffix = city.trim().ifBlank { "near me" }

@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.R
 import com.ana.theflow.data.model.professional.ProfessionalApplication
+import com.ana.theflow.data.model.report.ContentReport
 import com.ana.theflow.data.model.studio.StudioClaim
 import com.ana.theflow.data.repository.AdminRepository
 import com.ana.theflow.databinding.FragmentAdminReviewBinding
@@ -42,14 +43,16 @@ class AdminReviewFragment : Fragment() {
         setLoading(true)
         binding.adminLAYStudioClaims.removeAllViews()
         binding.adminLAYProfessionalApplications.removeAllViews()
+        binding.adminLAYContentReports.removeAllViews()
 
         adminRepository.loadPendingReviews(
             onSuccess = { data ->
                 setLoading(false)
                 renderStudioClaims(data.studioClaims)
                 renderProfessionalApplications(data.professionalApplications)
+                renderContentReports(data.contentReports)
 
-                val total = data.studioClaims.size + data.professionalApplications.size
+                val total = data.studioClaims.size + data.professionalApplications.size + data.contentReports.size
                 val statusMessage = if (total == 0) {
                     "No pending requests right now."
                 } else {
@@ -112,6 +115,46 @@ class AdminReviewFragment : Fragment() {
         }
     }
 
+    // Shows open moderation reports submitted by users.
+    private fun renderContentReports(reports: List<ContentReport>) {
+        if (reports.isEmpty()) {
+            binding.adminLAYContentReports.addView(emptyText("No open content reports."))
+            return
+        }
+
+        reports.forEach { report ->
+            binding.adminLAYContentReports.addView(
+                reviewCard(
+                    title = "${report.targetType.ifBlank { "content" }} report",
+                    body = listOf(
+                        "Reporter: ${report.reporterId}",
+                        "Target: ${report.targetId}",
+                        "Owner: ${report.targetOwnerId.ifBlank { "Unknown" }}",
+                        "Post: ${report.postId.ifBlank { "N/A" }}",
+                        "Comment: ${report.commentId.ifBlank { "N/A" }}",
+                        "Reason: ${report.reason.ifBlank { "Needs review" }}"
+                    ).joinToString("\n"),
+                    approveText = "Resolve",
+                    rejectText = "Keep open",
+                    onApprove = {
+                        setLoading(true)
+                        adminRepository.resolveContentReport(
+                            report = report,
+                            onSuccess = {
+                                Toast.makeText(requireContext(), "Report resolved", Toast.LENGTH_SHORT).show()
+                                loadPendingReviews()
+                            },
+                            onFailure = ::showActionError
+                        )
+                    },
+                    onReject = {
+                        Toast.makeText(requireContext(), "Report kept open", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            )
+        }
+    }
+
     private fun renderProfessionalApplications(applications: List<ProfessionalApplication>) {
         if (applications.isEmpty()) {
             binding.adminLAYProfessionalApplications.addView(emptyText("No pending professional applications."))
@@ -157,6 +200,8 @@ class AdminReviewFragment : Fragment() {
     private fun reviewCard(
         title: String,
         body: String,
+        approveText: String = "Approve",
+        rejectText: String = "Reject",
         onApprove: () -> Unit,
         onReject: () -> Unit
     ): View {
@@ -203,7 +248,7 @@ class AdminReviewFragment : Fragment() {
         }
 
         actions.addView(Button(context).apply {
-            text = "Approve"
+            text = approveText
             setTextColor(context.getColor(R.color.text_primary))
             setTypeface(null, Typeface.BOLD)
             setBackgroundResource(R.drawable.bg_button_primary)
@@ -212,7 +257,7 @@ class AdminReviewFragment : Fragment() {
         })
 
         actions.addView(Button(context).apply {
-            text = "Reject"
+            text = rejectText
             setTextColor(context.getColor(R.color.text_primary))
             setBackgroundResource(R.drawable.bg_button_secondary)
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {

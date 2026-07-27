@@ -26,6 +26,20 @@ service cloud.firestore {
         && get(userDoc(request.auth.uid)).data.role in ['studio_manager', 'STUDIO_MANAGER'];
     }
 
+    function isApprovedProfessional() {
+      return signedIn()
+        && exists(userDoc(request.auth.uid))
+        && (
+          get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin', 'studio_manager', 'STUDIO_MANAGER']
+          || get(userDoc(request.auth.uid)).data.verifiedTeacher == true
+          || get(userDoc(request.auth.uid)).data.verifiedChoreographer == true
+          || (
+            'managedStudioIds' in get(userDoc(request.auth.uid)).data
+            && get(userDoc(request.auth.uid)).data.managedStudioIds.size() > 0
+          )
+        );
+    }
+
     function unchanged(field) {
       return !(field in request.resource.data)
         || (field in resource.data && request.resource.data[field] == resource.data[field]);
@@ -57,7 +71,23 @@ service cloud.firestore {
     }
 
     function isPublicPost() {
-      return resource.data.visibility == 'public';
+      return !('visibility' in resource.data) || resource.data.visibility == 'public';
+    }
+
+    function previousLikesCount() {
+      return ('likesCount' in resource.data) ? resource.data.likesCount : 0;
+    }
+
+    function previousCommentsCount() {
+      return ('commentsCount' in resource.data) ? resource.data.commentsCount : 0;
+    }
+
+    function previousRegistrationsCount() {
+      return ('registrationsCount' in resource.data) ? resource.data.registrationsCount : 0;
+    }
+
+    function previousWaitlistCount() {
+      return ('waitlistCount' in resource.data) ? resource.data.waitlistCount : 0;
     }
 
     function isSafePostEngagementUpdate(fields) {
@@ -69,14 +99,38 @@ service cloud.firestore {
     function isSafeLikeCountUpdate() {
       return isSafePostEngagementUpdate(['likesCount', 'updatedAt'])
         && (
-          request.resource.data.likesCount == resource.data.likesCount + 1
-          || request.resource.data.likesCount == resource.data.likesCount - 1
-        );
+          request.resource.data.likesCount == previousLikesCount() + 1
+          || request.resource.data.likesCount == previousLikesCount() - 1
+        )
+        && request.resource.data.likesCount >= 0;
     }
 
     function isSafeCommentCountUpdate() {
       return isSafePostEngagementUpdate(['commentsCount', 'updatedAt'])
-        && request.resource.data.commentsCount == resource.data.commentsCount + 1;
+        && (
+          request.resource.data.commentsCount == previousCommentsCount() + 1
+          || request.resource.data.commentsCount == previousCommentsCount() - 1
+        )
+        && request.resource.data.commentsCount >= 0;
+    }
+
+    function isSafeRegistrationCountUpdate() {
+      return signedIn()
+        && isPublicPost()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['registrationsCount', 'waitlistCount'])
+        && request.resource.data.registrationsCount >= 0
+        && request.resource.data.waitlistCount >= 0
+        && (
+          request.resource.data.registrationsCount == previousRegistrationsCount()
+          || request.resource.data.registrationsCount == previousRegistrationsCount() + 1
+          || request.resource.data.registrationsCount == previousRegistrationsCount() - 1
+        )
+        && (
+          request.resource.data.waitlistCount == previousWaitlistCount()
+          || request.resource.data.waitlistCount == previousWaitlistCount() + 1
+          || request.resource.data.waitlistCount == previousWaitlistCount() - 1
+        );
     }
 
     function isStudioOwnerOrManager() {
@@ -123,7 +177,7 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow get: if signedIn();
-      allow list: if isAdmin();
+      allow list: if signedIn();
       allow create: if createsOwnUser(uid) || isAdmin();
       allow update: if isAdmin() || (isOwner(uid) && keepsUserAdminFieldsSafe());
       allow delete: if isAdmin() || isOwner(uid);
@@ -196,7 +250,8 @@ service cloud.firestore {
       allow update: if isAdmin()
         || isPostAuthor()
         || isSafeLikeCountUpdate()
-        || isSafeCommentCountUpdate();
+        || isSafeCommentCountUpdate()
+        || isSafeRegistrationCountUpdate();
       allow delete: if isPostAuthor() || isAdmin();
 
       match /likes/{uid} {
@@ -209,11 +264,54 @@ service cloud.firestore {
         allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
         allow update, delete: if isAdmin()
           || (signedIn() && resource.data.authorId == request.auth.uid);
+
+        match /likes/{uid} {
+          allow read: if signedIn();
+          allow write: if isOwner(uid) || isAdmin();
+        }
+
+        match /replies/{replyId} {
+          allow read: if signedIn();
+          allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+          allow update, delete: if isAdmin()
+            || (signedIn() && resource.data.authorId == request.auth.uid);
+        }
       }
 
       match /saves/{uid} {
         allow read, write: if isOwner(uid) || isAdmin();
       }
+
+      match /registrations/{uid} {
+        allow read: if signedIn();
+        allow write: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    match /activities/{activityId} {
+      allow get, list: if signedIn()
+        && (
+          resource.data.status == 'published'
+          || resource.data.creatorUid == request.auth.uid
+          || isAdmin()
+        );
+      allow create: if isApprovedProfessional()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.status in ['draft', 'published']
+        && request.resource.data.title is string
+        && request.resource.data.activityType in ['class', 'workshop', 'event'];
+      allow update: if isAdmin()
+        || (
+          isApprovedProfessional()
+          && resource.data.creatorUid == request.auth.uid
+          && request.resource.data.creatorUid == resource.data.creatorUid
+          && request.resource.data.status in ['draft', 'published', 'cancelled', 'past']
+        );
+      allow delete: if isAdmin()
+        || (
+          isApprovedProfessional()
+          && resource.data.creatorUid == request.auth.uid
+        );
     }
 
     match /studios/{studioId} {
@@ -328,6 +426,26 @@ service cloud.firestore {
         && request.resource.data.eventType is string
         && request.resource.data.targetType is string;
       allow update, delete: if isAdmin();
+    }
+
+    match /contentReports/{reportId} {
+      allow get, list: if isAdmin()
+        || (signedIn() && resource.data.reporterId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.targetType is string
+        && request.resource.data.targetId is string
+        && request.resource.data.status == 'open';
+      allow update, delete: if isAdmin();
+    }
+
+    match /accountDeletionRequests/{uid} {
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isOwner(uid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'requested';
+      allow delete: if isAdmin();
     }
 
     match /conversations/{conversationId} {
