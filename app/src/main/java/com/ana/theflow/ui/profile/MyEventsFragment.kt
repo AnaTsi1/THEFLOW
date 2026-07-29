@@ -13,6 +13,7 @@ import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.databinding.FragmentMyEventsBinding
 import com.ana.theflow.ui.common.PostCardRenderer
+import com.ana.theflow.ui.common.UiText
 
 // Displays registered event posts and lets the user open or unregister from them.
 class MyEventsFragment : Fragment() {
@@ -44,7 +45,7 @@ class MyEventsFragment : Fragment() {
             onFailure = { error ->
                 if (_binding == null) return@loadRegisteredEventPosts
                 setLoading(false)
-                binding.myEventsLBLMessage.text = error
+                binding.myEventsLBLMessage.text = UiText.friendlyError(error, "We could not load your events.")
             }
         )
     }
@@ -84,7 +85,7 @@ class MyEventsFragment : Fragment() {
             },
             onFailure = { error ->
                 if (_binding == null) return@toggleEventRegistration
-                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not update this registration."), Toast.LENGTH_SHORT).show()
             }
         )
     }

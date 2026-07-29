@@ -11,11 +11,13 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.repository.NotificationRepository
 import com.ana.theflow.databinding.FragmentNotificationsBinding
+import com.ana.theflow.ui.common.ResponsiveLayout
 import com.bumptech.glide.Glide
 import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
@@ -27,6 +29,7 @@ class NotificationsFragment : Fragment() {
     private var _binding: FragmentNotificationsBinding? = null
     private val binding get() = _binding!!
     private val notificationRepository = NotificationRepository()
+    private val viewModel: NotificationsViewModel by activityViewModels()
     private var notificationsListener: ListenerRegistration? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -40,23 +43,35 @@ class NotificationsFragment : Fragment() {
                 if (_binding != null) Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
             }
         }
+        (binding.root as? ViewGroup)?.let { root ->
+            ResponsiveLayout.constrainToReadableWidth(*Array(root.childCount) { index -> root.getChildAt(index) })
+        }
+        ResponsiveLayout.ensureTouchTarget(binding.notificationsBTNMarkAll)
+        if (viewModel.notifications.isNotEmpty()) renderNotifications(viewModel.notifications)
         listen()
     }
 
     private fun listen() {
-        binding.notificationsProgress.visibility = View.VISIBLE
+        binding.notificationsProgress.visibility = if (viewModel.notifications.isEmpty()) View.VISIBLE else View.GONE
         notificationsListener?.remove()
         notificationsListener = notificationRepository.listenToNotifications(
             onUpdate = { notifications ->
                 if (_binding == null) return@listenToNotifications
+                viewModel.notifications = notifications
+                viewModel.error = ""
                 binding.notificationsProgress.visibility = View.GONE
                 renderNotifications(notifications)
             },
             onError = { error ->
                 if (_binding == null) return@listenToNotifications
+                viewModel.error = error
                 binding.notificationsProgress.visibility = View.GONE
-                binding.notificationsLBLMessage.text = error
-                binding.notificationsLBLMessage.visibility = View.VISIBLE
+                if (viewModel.notifications.isEmpty()) {
+                    binding.notificationsLBLMessage.text = error
+                    binding.notificationsLBLMessage.visibility = View.VISIBLE
+                } else {
+                    Toast.makeText(requireContext(), "Notifications could not refresh.", Toast.LENGTH_SHORT).show()
+                }
             }
         )
     }
@@ -65,6 +80,9 @@ class NotificationsFragment : Fragment() {
         binding.notificationsLAYList.removeAllViews()
         binding.notificationsLBLMessage.visibility = if (notifications.isEmpty()) View.VISIBLE else View.GONE
         binding.notificationsLBLMessage.text = "No notifications yet."
+        val unreadCount = notifications.count { !it.isRead }
+        binding.notificationsBTNMarkAll.visibility = if (unreadCount > 0) View.VISIBLE else View.GONE
+        binding.notificationsBTNMarkAll.text = "Mark all as read"
         notifications.forEach { notification ->
             binding.notificationsLAYList.addView(notificationRow(notification))
         }
@@ -162,6 +180,9 @@ class NotificationsFragment : Fragment() {
             InAppNotification.Types.PROFESSIONAL_REJECTED -> "Application rejected"
             InAppNotification.Types.EVENT_UPDATED -> "Event update"
             InAppNotification.Types.EVENT_RECOMMENDED -> "Recommended event"
+            InAppNotification.Types.JOB_RECOMMENDED -> "Recommended job"
+            InAppNotification.Types.JOB_APPLICATION_RECEIVED -> "Job application"
+            InAppNotification.Types.JOB_APPLICATION_UPDATED -> "Application update"
             else -> "Notification"
         }
     }

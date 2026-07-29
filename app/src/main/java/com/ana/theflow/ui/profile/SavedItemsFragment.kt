@@ -19,6 +19,7 @@ import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.databinding.FragmentSavedItemsBinding
 import com.ana.theflow.ui.common.PostCardRenderer
+import com.ana.theflow.ui.common.UiText
 
 // Combines saved social posts with saved studios/classes from Discover.
 class SavedItemsFragment : Fragment() {
@@ -39,6 +40,7 @@ class SavedItemsFragment : Fragment() {
         binding.savedBTNRefresh.setOnClickListener {
             loadSavedItems()
         }
+        binding.savedBTNRefresh.visibility = View.GONE
         loadSavedItems()
     }
 
@@ -65,7 +67,8 @@ class SavedItemsFragment : Fragment() {
             if (completed) return
             completed = true
             setLoading(false)
-            binding.savedLBLMessage.text = message
+            binding.savedLBLMessage.text = UiText.friendlyError(message, "We could not load your saved items.")
+            binding.savedBTNRefresh.visibility = View.VISIBLE
         }
 
         postRepository.loadSavedPosts(
@@ -101,6 +104,7 @@ class SavedItemsFragment : Fragment() {
         } else {
             "$totalItems saved item${if (totalItems == 1) "" else "s"}"
         }
+        binding.savedBTNRefresh.visibility = View.GONE
 
         if (totalItems == 0) {
             binding.savedLAYItems.addView(emptyText("Save posts, studios, or classes and they will appear here."))
@@ -148,7 +152,7 @@ class SavedItemsFragment : Fragment() {
             },
             onFailure = { error ->
                 if (_binding == null) return@toggleSave
-                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not remove this item."), Toast.LENGTH_LONG).show()
             }
         )
     }

@@ -1,5 +1,6 @@
 package com.ana.theflow.data.repository
 
+import android.util.Log
 import com.ana.theflow.data.model.messaging.Conversation
 import com.ana.theflow.data.model.messaging.ConversationParticipant
 import com.ana.theflow.data.model.messaging.Message
@@ -12,6 +13,7 @@ import com.ana.theflow.utilities.UnreadCountUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
@@ -110,51 +112,44 @@ class MessagingRepository {
 
         val conversationId = conversationIdFor(currentUid, otherUserId)
         val conversationRef = db.collection(Constants.Collections.CONVERSATIONS).document(conversationId)
-        conversationRef.get()
-            .addOnSuccessListener { existing ->
-                if (existing.exists()) {
-                    onSuccess(conversationId)
-                    return@addOnSuccessListener
-                }
-                checkMessagingAllowed(
-                    senderUid = currentUid,
-                    recipientUid = otherUserId,
-                    onAllowed = {
-                        loadParticipants(
-                            currentUid = currentUid,
-                            otherUserId = otherUserId,
-                            onSuccess = { currentUser, otherUser ->
-                                val participants = listOf(currentUid, otherUserId).sorted()
-                                val participantInfo = mapOf(
-                                    currentUid to currentUser.toParticipant(),
-                                    otherUserId to otherUser.toParticipant()
-                                )
-                                conversationRef.set(
-                                    mapOf(
-                                        "conversationId" to conversationId,
-                                        "participantIds" to participants,
-                                        "participantInfo" to participantInfo.mapValues { it.value.toMap() },
-                                        "lastMessage" to "",
-                                        "lastMessageAt" to FieldValue.serverTimestamp(),
-                                        "lastSenderId" to "",
-                                        "unreadCounts" to participants.associateWith { 0L },
-                                        "createdAt" to FieldValue.serverTimestamp(),
-                                        "updatedAt" to FieldValue.serverTimestamp()
-                                    ),
-                                    SetOptions.merge()
-                                )
-                                    .addOnSuccessListener { onSuccess(conversationId) }
-                                    .addOnFailureListener { error ->
-                                        onFailure(error.message ?: "Failed to start conversation")
-                                    }
-                            },
-                            onFailure = onFailure
+        Log.d("ConversationCreateDebug", "stage=start currentUid=$currentUid otherUserId=$otherUserId conversationId=$conversationId path=${conversationRef.path}")
+        checkMessagingAllowed(
+            senderUid = currentUid,
+            recipientUid = otherUserId,
+            onAllowed = {
+                loadParticipants(
+                    currentUid = currentUid,
+                    otherUserId = otherUserId,
+                    onSuccess = { currentUser, otherUser ->
+                        val participants = listOf(currentUid, otherUserId).sorted()
+                        val participantInfo = mapOf(
+                            currentUid to currentUser.toParticipant(),
+                            otherUserId to otherUser.toParticipant()
                         )
+                        Log.d("ConversationCreateDebug", "stage=upsert currentUid=$currentUid otherUserId=$otherUserId conversationId=$conversationId participantIds=$participants path=${conversationRef.path}")
+                        conversationRef.set(
+                            mapOf(
+                                "conversationId" to conversationId,
+                                "participantIds" to participants,
+                                "participantInfo" to participantInfo.mapValues { it.value.toMap() },
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            ),
+                            SetOptions.merge()
+                        )
+                            .addOnSuccessListener {
+                                Log.d("ConversationCreateDebug", "stage=upsert_success conversationId=$conversationId")
+                                onSuccess(conversationId)
+                            }
+                            .addOnFailureListener { error ->
+                                Log.e("ConversationCreateDebug", "stage=upsert_failed currentUid=$currentUid otherUserId=$otherUserId conversationId=$conversationId code=${error.firestoreCode()} message=${error.message}", error)
+                                onFailure(messageError(error, "open"))
+                            }
                     },
-                    onDenied = onFailure
+                    onFailure = onFailure
                 )
-            }
-            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to open conversation") }
+            },
+            onDenied = onFailure
+        )
     }
 
     fun sendMessage(
@@ -176,9 +171,11 @@ class MessagingRepository {
 
         val conversationRef = db.collection(Constants.Collections.CONVERSATIONS).document(conversationId)
         val messageRef = conversationRef.collection(Constants.Collections.MESSAGES).document()
+        Log.d("MessageSendDebug", "stage=start currentUid=$currentUid conversationId=$conversationId messagePath=${messageRef.path}")
         db.runTransaction { transaction ->
             val conversation = transaction.get(conversationRef)
             val participants = (conversation.get("participantIds") as? List<*>).orEmpty().mapNotNull { it as? String }
+            Log.d("MessageSendDebug", "stage=transaction_read currentUid=$currentUid conversationId=$conversationId participantIds=$participants")
             if (!participants.contains(currentUid)) error("You are not part of this conversation")
             val unread = (conversation.get("unreadCounts") as? Map<*, *>).orEmpty().mapNotNull { (key, value) ->
                 val uid = key as? String ?: return@mapNotNull null
@@ -210,12 +207,35 @@ class MessagingRepository {
             participants.firstOrNull { it != currentUid }.orEmpty()
         }
             .addOnSuccessListener { recipientUid ->
+                Log.d("MessageSendDebug", "stage=send_success currentUid=$currentUid conversationId=$conversationId recipientUid=$recipientUid")
                 createMessageNotification(conversationId, recipientUid, cleanText)
                 onSuccess()
             }
             .addOnFailureListener { error ->
-                onFailure(error.message ?: "Failed to send message")
+                Log.e("MessageSendDebug", "stage=send_failed currentUid=$currentUid conversationId=$conversationId code=${error.firestoreCode()} message=${error.message}", error)
+                onFailure(messageError(error, "send"))
             }
+    }
+
+    fun canStartConversationWith(
+        otherUserId: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val currentUid = auth.currentUser?.uid
+        if (currentUid == null) {
+            onResult(false, "Please log in to send messages.")
+            return
+        }
+        if (currentUid == otherUserId) {
+            onResult(false, "You cannot message yourself.")
+            return
+        }
+        checkMessagingAllowed(
+            senderUid = currentUid,
+            recipientUid = otherUserId,
+            onAllowed = { onResult(true, "") },
+            onDenied = { reason -> onResult(false, reason) }
+        )
     }
 
     fun markConversationRead(conversationId: String) {
@@ -287,24 +307,42 @@ class MessagingRepository {
         recipientUid: String,
         onResult: (Boolean) -> Unit
     ) {
-        val collections = listOf("followingDancers", "followingTeachers")
+        val collections = listOf("followingDancers", "followingTeachers", "followingStudios")
         var pending = collections.size
         var found = false
         collections.forEach { collection ->
-            db.collection(Constants.Collections.USERS)
+            val ref = db.collection(Constants.Collections.USERS)
                 .document(recipientUid)
                 .collection(collection)
                 .document(senderUid)
+            Log.d("MessagingPermissionDebug", "stage=check_follow senderUid=$senderUid recipientUid=$recipientUid path=${ref.path}")
+            ref
                 .get()
                 .addOnSuccessListener { document ->
                     found = found || document.exists()
                     pending -= 1
                     if (pending == 0) onResult(found)
                 }
-                .addOnFailureListener {
+                .addOnFailureListener { error ->
+                    Log.e("MessagingPermissionDebug", "stage=check_follow_failed senderUid=$senderUid recipientUid=$recipientUid collection=$collection code=${error.firestoreCode()} message=${error.message}", error)
                     pending -= 1
                     if (pending == 0) onResult(found)
                 }
+        }
+    }
+
+    private fun Exception.firestoreCode(): String {
+        return (this as? FirebaseFirestoreException)?.code?.name ?: this::class.java.simpleName
+    }
+
+    private fun messageError(error: Exception, action: String): String {
+        val code = (error as? FirebaseFirestoreException)?.code
+        return when (code) {
+            FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                if (action == "send") "We couldn't send this message. Please try again." else "We couldn't open this conversation."
+            FirebaseFirestoreException.Code.UNAVAILABLE ->
+                "The network is unavailable right now. Please try again."
+            else -> error.message ?: if (action == "send") "We couldn't send this message." else "We couldn't open this conversation."
         }
     }
 

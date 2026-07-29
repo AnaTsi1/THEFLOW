@@ -65,7 +65,7 @@
     <style name="Flow.Button.Icon">
         <item name="android:layout_width">@dimen/flow_touch_size</item>
         <item name="android:layout_height">@dimen/flow_touch_size</item>
-        <item name="android:background">@drawable/bg_flow_icon_button</item>
+        <item name="android:background">@drawable/bg_flow_drawer_row</item>
         <item name="android:padding">10dp</item>
         <item name="android:tint">@color/flow_brand</item>
     </style>
@@ -82,6 +82,37 @@
         <item name="android:background">@drawable/bg_flow_chip</item>
         <item name="android:textColor">@color/flow_brand</item>
         <item name="android:textSize">@dimen/flow_meta_text</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Flow.Drawer" />
+
+    <style name="Flow.Drawer.Row">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">52dp</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:background">@drawable/bg_flow_icon_button</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+    </style>
+
+    <style name="Flow.Drawer.Icon">
+        <item name="android:layout_width">22dp</item>
+        <item name="android:layout_height">22dp</item>
+        <item name="android:tint">@color/flow_brand</item>
+    </style>
+
+    <style name="Flow.Drawer.Label">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">12dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">@color/flow_ink</item>
+        <item name="android:textSize">15sp</item>
         <item name="android:textStyle">bold</item>
     </style>
 </resources>

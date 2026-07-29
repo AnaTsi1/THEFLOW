@@ -21,6 +21,7 @@ import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.MessagingRepository
 import com.ana.theflow.data.repository.SettingsRepository
 import com.ana.theflow.databinding.FragmentChatBinding
+import com.ana.theflow.ui.common.UiText
 import com.bumptech.glide.Glide
 import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
@@ -83,7 +84,7 @@ class ChatFragment : Fragment() {
             onFailure = { error ->
                 if (_binding == null) return@loadConversation
                 binding.chatProgress.visibility = View.GONE
-                binding.chatLBLMessage.text = error
+                binding.chatLBLMessage.text = UiText.friendlyError(error, "We could not load this conversation.")
                 binding.chatLBLMessage.visibility = View.VISIBLE
             }
         )
@@ -119,7 +120,7 @@ class ChatFragment : Fragment() {
             onError = { error ->
                 if (_binding == null) return@listenToMessages
                 binding.chatProgress.visibility = View.GONE
-                binding.chatLBLMessage.text = error
+                binding.chatLBLMessage.text = UiText.friendlyError(error, "We could not load your messages. Please try again.")
                 binding.chatLBLMessage.visibility = View.VISIBLE
             }
         )
@@ -191,7 +192,7 @@ class ChatFragment : Fragment() {
                 if (_binding == null) return@sendMessage
                 isSending = false
                 updateSendState()
-                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not send this message."), Toast.LENGTH_SHORT).show()
             }
         )
     }

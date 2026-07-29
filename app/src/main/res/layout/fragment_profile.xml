@@ -26,16 +26,16 @@
             <ImageView
                 android:id="@+id/profile_IMG_cover"
                 android:layout_width="match_parent"
-                android:layout_height="124dp"
+                android:layout_height="96dp"
                 android:background="@drawable/bg_flow_media"
                 android:contentDescription="@string/profile_cover_image"
                 android:scaleType="centerCrop" />
 
             <ImageView
                 android:id="@+id/profile_IMG_avatar"
-                android:layout_width="88dp"
-                android:layout_height="88dp"
-                android:layout_marginTop="-34dp"
+                android:layout_width="104dp"
+                android:layout_height="104dp"
+                android:layout_marginTop="-44dp"
                 android:background="@drawable/bg_avatar"
                 android:contentDescription="@string/profile_photo"
                 android:scaleType="centerCrop" />
@@ -58,18 +58,6 @@
                     android:textStyle="bold" />
 
                 <ImageButton
-                    android:id="@+id/profile_BTN_message"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:layout_marginEnd="@dimen/flow_gap_small"
-                    android:background="@drawable/bg_flow_icon_button"
-                    android:contentDescription="@string/profile_message"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_chat_24"
-                    android:tint="@color/flow_brand"
-                    android:visibility="gone" />
-
-                <ImageButton
                     android:id="@+id/profile_BTN_settings"
                     android:layout_width="44dp"
                     android:layout_height="44dp"
@@ -78,6 +66,17 @@
                     android:padding="10dp"
                     android:src="@drawable/ic_settings_24"
                     android:tint="@color/flow_brand" />
+
+                <ImageButton
+                    android:id="@+id/profile_BTN_more"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_flow_icon_button"
+                    android:contentDescription="@string/more_options"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_more_horizontal_24"
+                    android:tint="@color/flow_brand"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <Button
@@ -95,21 +94,46 @@
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/profile_BTN_follow"
-                android:layout_width="wrap_content"
-                android:layout_height="@dimen/flow_touch_size"
+            <LinearLayout
+                android:id="@+id/profile_LAY_public_actions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/flow_gap_small"
-                android:background="@drawable/bg_flow_button_primary"
-                android:minWidth="0dp"
-                android:paddingStart="20dp"
-                android:paddingEnd="20dp"
-                android:text="@string/profile_follow"
-                android:textAllCaps="false"
-                android:textColor="@color/flow_surface"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/profile_BTN_follow"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/flow_touch_size"
+                    android:layout_marginEnd="@dimen/flow_gap_small"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_flow_button_primary"
+                    android:minWidth="0dp"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:text="@string/profile_follow"
+                    android:textAllCaps="false"
+                    android:textColor="@color/flow_surface"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/profile_BTN_message"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/flow_touch_size"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_flow_button_secondary"
+                    android:contentDescription="@string/profile_message"
+                    android:minWidth="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="@string/profile_message"
+                    android:textAllCaps="false"
+                    android:textColor="@color/flow_brand"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/profile_BTN_report"
@@ -191,33 +215,55 @@
 
         </LinearLayout>
 
-        <Button
-            android:id="@+id/profile_BTN_savedItems"
+        <LinearLayout
+            android:id="@+id/profile_LAY_managementActions"
             android:layout_width="wrap_content"
-            android:layout_height="@dimen/flow_touch_size"
+            android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/flow_gap_medium"
-            android:background="@drawable/bg_flow_button_secondary"
-            android:minWidth="0dp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="@string/profile_saved"
-            android:textAllCaps="false"
-            android:textColor="@color/flow_brand"
-            android:textStyle="bold" />
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/profile_BTN_savedItems"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/flow_touch_size"
+                android:background="@drawable/bg_flow_button_secondary"
+                android:minWidth="0dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:text="@string/profile_saved"
+                android:textAllCaps="false"
+                android:textColor="@color/flow_brand"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/profile_BTN_myEvents"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/flow_touch_size"
+                android:layout_marginStart="@dimen/flow_gap_small"
+                android:background="@drawable/bg_flow_button_secondary"
+                android:minWidth="0dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:text="@string/my_events_title"
+                android:textAllCaps="false"
+                android:textColor="@color/flow_brand"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <Button
-            android:id="@+id/profile_BTN_myEvents"
+            android:id="@+id/profile_BTN_createContent"
             android:layout_width="wrap_content"
             android:layout_height="@dimen/flow_touch_size"
             android:layout_marginTop="@dimen/flow_gap_small"
-            android:background="@drawable/bg_flow_button_secondary"
+            android:background="@drawable/bg_flow_button_primary"
             android:minWidth="0dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="@string/my_events_title"
+            android:text="Create"
             android:textAllCaps="false"
-            android:textColor="@color/flow_brand"
-            android:textStyle="bold" />
+            android:textColor="@color/flow_surface"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <LinearLayout
             android:id="@+id/profile_LAY_sections"
@@ -461,6 +507,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/profile_LAY_composer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/flow_gap_medium"

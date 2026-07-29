@@ -17,6 +17,9 @@ object Constants {
         const val CONTENT_REPORTS = "contentReports"
         const val ACCOUNT_DELETION_REQUESTS = "accountDeletionRequests"
         const val ACTIVITIES = "activities"
+        const val JOBS = "jobs"
+        const val JOB_APPLICATIONS = "jobApplications"
+        const val SAVED_JOBS = "savedJobs"
         const val REVIEWS = "reviews"
     }
 

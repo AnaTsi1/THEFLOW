@@ -26,8 +26,8 @@
 
         <FrameLayout
             android:id="@+id/main_BOX_notifications"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:background="@drawable/bg_icon_button_compact"
             android:clickable="true"
             android:focusable="true">
@@ -38,7 +38,7 @@
                 android:layout_height="22dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_notifications_24"
-                android:tint="@color/text_primary" />
+                android:tint="@color/flow_brand" />
 
             <TextView
                 android:id="@+id/main_badge_notifications"
@@ -56,8 +56,8 @@
 
         <FrameLayout
             android:id="@+id/main_BOX_messages"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_marginLeft="8dp"
             android:background="@drawable/bg_icon_button_compact"
             android:clickable="true"
@@ -69,7 +69,7 @@
                 android:layout_height="22dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_chat_24"
-                android:tint="@color/text_primary" />
+                android:tint="@color/flow_brand" />
 
             <TextView
                 android:id="@+id/main_badge_messages"

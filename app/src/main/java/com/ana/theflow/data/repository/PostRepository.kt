@@ -1,6 +1,7 @@
 // Repository for creating, loading, and updating social posts and their engagement state.
 package com.ana.theflow.data.repository
 
+import android.util.Log
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
 import com.ana.theflow.data.model.post.PostCommentReply
@@ -14,6 +15,10 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // Centralizes Firestore access for posts so feed screens do not write post data directly.
 class PostRepository {
@@ -44,6 +49,7 @@ class PostRepository {
         text: String,
         mediaType: String = "none",
         postType: String = POST_TYPE_REGULAR,
+        visibility: String = "public",
         activityType: String = "",
         activityLocation: String = "",
         activityDate: String = "",
@@ -51,6 +57,7 @@ class PostRepository {
         activityPrice: String = "",
         activityLevel: String = "",
         activityDescription: String = "",
+        activityCapacity: Long = 0,
         collaborationLookingFor: String = "",
         collaborationStyle: String = "",
         collaborationLocation: String = "",
@@ -100,7 +107,7 @@ class PostRepository {
             "activityPrice" to activityPrice.trim(),
             "activityLevel" to activityLevel.trim(),
             "activityDescription" to activityDescription.trim(),
-            "activityCapacity" to 0,
+            "activityCapacity" to activityCapacity.coerceAtLeast(0),
             "registrationsCount" to 0,
             "waitlistCount" to 0,
             "collaborationLookingFor" to collaborationLookingFor.trim(),
@@ -110,9 +117,12 @@ class PostRepository {
             "collaborationPaid" to collaborationPaid.trim(),
             "collaborationDescription" to collaborationDescription.trim(),
             "createdAt" to FieldValue.serverTimestamp(),
-            "visibility" to "public",
+            "visibility" to visibility.ifBlank { "public" },
             "likesCount" to 0,
-            "commentsCount" to 0
+            "commentsCount" to 0,
+            "originalPostId" to "",
+            "originalAuthorId" to "",
+            "originalAuthorName" to ""
         )
 
         docRef.set(post)
@@ -120,6 +130,65 @@ class PostRepository {
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to create post")
             }
+    }
+
+    fun createRepost(
+        originalPost: Post,
+        author: User,
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val currentUid = auth.currentUser?.uid
+        if (currentUid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+        if (originalPost.postId.isBlank() || originalPost.visibility != "public") {
+            onFailure("This post is not available to repost")
+            return
+        }
+        if (originalPost.authorId == currentUid) {
+            onFailure("You already created this post")
+            return
+        }
+
+        db.collection(Constants.Collections.POSTS)
+            .whereEqualTo("authorId", currentUid)
+            .whereEqualTo("originalPostId", originalPost.postId)
+            .limit(1)
+            .get()
+            .addOnSuccessListener { existing ->
+                if (!existing.isEmpty) {
+                    onFailure("You already reposted this")
+                    return@addOnSuccessListener
+                }
+                val docRef = db.collection(Constants.Collections.POSTS).document()
+                val authorName = "${author.firstName} ${author.lastName}".trim().ifBlank { "Dancer" }
+                val repost = mapOf(
+                    "postId" to docRef.id,
+                    "authorId" to currentUid,
+                    "authorName" to authorName,
+                    "authorProfileImageUrl" to author.profileImageUrl,
+                    "authorType" to author.role.ifBlank { "dancer" },
+                    "text" to "",
+                    "mediaUrls" to emptyList<String>(),
+                    "mediaItems" to emptyList<Map<String, Any>>(),
+                    "mediaType" to "none",
+                    "postType" to POST_TYPE_REPOST,
+                    "visibility" to "public",
+                    "likesCount" to 0,
+                    "commentsCount" to 0,
+                    "originalPostId" to originalPost.postId,
+                    "originalAuthorId" to originalPost.authorId,
+                    "originalAuthorName" to originalPost.authorName,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                docRef.set(repost)
+                    .addOnSuccessListener { onSuccess(docRef.id) }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to repost") }
+            }
+            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to check repost state") }
     }
 
     // Loads posts for the current feed.
@@ -454,43 +523,73 @@ class PostRepository {
 
         val postRef = db.collection(Constants.Collections.POSTS).document(postId)
         val likeRef = postRef.collection(LIKES_COLLECTION).document(uid)
-        db.runTransaction { transaction ->
-            val likeSnapshot = transaction.get(likeRef)
-            val isLiked = likeSnapshot.exists()
-            if (isLiked) {
-                transaction.delete(likeRef)
-                transaction.update(
-                    postRef,
-                    mapOf(
-                        "likesCount" to FieldValue.increment(-1),
-                        "updatedAt" to FieldValue.serverTimestamp()
+        Log.d(TAG_LIKE, "toggleLike entry uid=$uid postId=$postId likePath=${likeRef.path}")
+        likeRef.get()
+            .addOnSuccessListener { likeSnapshot ->
+                val isLiked = likeSnapshot.exists()
+                val write = if (isLiked) {
+                    likeRef.delete()
+                } else {
+                    likeRef.set(
+                        mapOf(
+                            "userId" to uid,
+                            "createdAt" to FieldValue.serverTimestamp()
+                        ),
+                        SetOptions.merge()
                     )
-                )
-            } else {
-                transaction.set(
-                    likeRef,
-                    mapOf(
-                        "userId" to uid,
-                        "createdAt" to FieldValue.serverTimestamp()
-                    )
-                )
-                transaction.update(
-                    postRef,
-                    mapOf(
-                        "likesCount" to FieldValue.increment(1),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                )
-            }
-            !isLiked
-        }
-            .addOnSuccessListener { isLiked ->
-                if (isLiked) createLikeNotification(postId, uid)
-                onSuccess(isLiked)
+                }
+                write
+                    .addOnSuccessListener {
+                        Log.d(TAG_LIKE, "like doc write success uid=$uid postId=$postId isNowLiked=${!isLiked}")
+                        syncLikeCountBestEffort(postId)
+                        if (!isLiked) createLikeNotification(postId, uid)
+                        onSuccess(!isLiked)
+                    }
+                    .addOnFailureListener { error ->
+                        Log.e(TAG_PERMISSION, "like doc write failed uid=$uid postId=$postId path=${likeRef.path}", error)
+                        onFailure(error.message ?: "Failed to update like")
+                    }
             }
             .addOnFailureListener { error ->
-                onFailure(error.message ?: "Failed to update like")
+                Log.e(TAG_PERMISSION, "like state read failed uid=$uid postId=$postId path=${likeRef.path}", error)
+                onFailure(error.message ?: "Failed to load like state")
             }
+    }
+
+    private fun syncLikeCountBestEffort(postId: String) {
+        val postRef = db.collection(Constants.Collections.POSTS).document(postId)
+        postRef.collection(LIKES_COLLECTION)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                postRef.update(
+                    mapOf(
+                        "likesCount" to snapshot.size().toLong(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).addOnFailureListener { error ->
+                    Log.w(TAG_PERMISSION, "like count sync failed postId=$postId path=${postRef.path}", error)
+                }
+            }
+            .addOnFailureListener { error ->
+                Log.w(TAG_LIKE, "like count read failed postId=$postId", error)
+            }
+    }
+
+    fun loadLikeCount(
+        postId: String,
+        onSuccess: (Long) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        if (postId.isBlank()) {
+            onSuccess(0L)
+            return
+        }
+        db.collection(Constants.Collections.POSTS)
+            .document(postId)
+            .collection(LIKES_COLLECTION)
+            .get()
+            .addOnSuccessListener { snapshot -> onSuccess(snapshot.size().toLong()) }
+            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load like count") }
     }
 
     // Checks whether the current user liked one post.
@@ -649,6 +748,32 @@ class PostRepository {
             }
     }
 
+    // Loads upcoming public dance activity posts for the dedicated Events entry point.
+    fun loadUpcomingEventPosts(
+        onSuccess: (List<Post>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection(Constants.Collections.POSTS)
+            .whereEqualTo("visibility", "public")
+            .limit(100)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val posts = snapshot.documents.mapNotNull { document ->
+                    document.toObject(Post::class.java)?.copy(postId = document.id)
+                }.filter { post ->
+                    post.postType == POST_TYPE_DANCE_ACTIVITY && !post.isPastActivityDate()
+                }.sortedBy { it.activityDate.ifBlank { "9999-99-99" } }
+
+                loadBlockedAuthorIds(
+                    onSuccess = { blockedIds -> onSuccess(posts.filterNot { blockedIds.contains(it.authorId) }.take(30)) },
+                    onFailure = { onSuccess(posts.take(30)) }
+                )
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load events")
+            }
+    }
+
     // Toggles registration for a dance activity post.
     fun toggleEventRegistration(
         post: Post,
@@ -795,22 +920,36 @@ class PostRepository {
             "createdAt" to FieldValue.serverTimestamp()
         )
 
-        db.runBatch { batch ->
-            batch.set(commentRef, comment)
-            batch.update(
-                postRef,
-                mapOf(
-                    "commentsCount" to FieldValue.increment(1),
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-            )
-        }
+        Log.d(TAG_COMMENT, "addComment entry uid=$currentUid postId=$postId commentPath=${commentRef.path}")
+        commentRef.set(comment)
             .addOnSuccessListener {
+                Log.d(TAG_COMMENT, "comment write success uid=$currentUid postId=$postId commentId=${commentRef.id}")
+                syncCommentCountBestEffort(postId)
                 createCommentNotification(postId, currentUid, author, cleanText, commentRef.id)
                 onSuccess()
             }
             .addOnFailureListener { error ->
+                Log.e(TAG_PERMISSION, "comment write failed uid=$currentUid postId=$postId path=${commentRef.path}", error)
                 onFailure(error.message ?: "Failed to add comment")
+            }
+    }
+
+    private fun syncCommentCountBestEffort(postId: String) {
+        val postRef = db.collection(Constants.Collections.POSTS).document(postId)
+        postRef.collection(COMMENTS_COLLECTION)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                postRef.update(
+                    mapOf(
+                        "commentsCount" to snapshot.size().toLong(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).addOnFailureListener { error ->
+                    Log.w(TAG_PERMISSION, "comment count sync failed postId=$postId path=${postRef.path}", error)
+                }
+            }
+            .addOnFailureListener { error ->
+                Log.w(TAG_COMMENT, "comment count read failed postId=$postId", error)
             }
     }
 
@@ -881,13 +1020,16 @@ class PostRepository {
         val commentRef = postRef.collection(COMMENTS_COLLECTION).document(commentId)
         db.runTransaction { transaction ->
             val snapshot = transaction.get(commentRef)
+            val postSnapshot = transaction.get(postRef)
             if (!snapshot.exists()) error("Comment was not found")
+            if (!postSnapshot.exists()) error("Post was not found")
             if (snapshot.getString("authorId") != uid) error("You can only delete your own comments")
+            val currentComments = postSnapshot.getLong("commentsCount") ?: 0L
             transaction.delete(commentRef)
             transaction.update(
                 postRef,
                 mapOf(
-                    "commentsCount" to FieldValue.increment(-1),
+                    "commentsCount" to (currentComments - 1).coerceAtLeast(0),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             )
@@ -989,12 +1131,15 @@ class PostRepository {
             "createdAt" to FieldValue.serverTimestamp()
         )
 
-        db.runBatch { batch ->
-            batch.set(replyRef, reply)
-            batch.update(
+        db.runTransaction { transaction ->
+            val postSnapshot = transaction.get(postRef)
+            if (!postSnapshot.exists()) error("Post was not found")
+            val currentComments = postSnapshot.getLong("commentsCount") ?: 0L
+            transaction.set(replyRef, reply)
+            transaction.update(
                 postRef,
                 mapOf(
-                    "commentsCount" to FieldValue.increment(1),
+                    "commentsCount" to currentComments + 1,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             )
@@ -1266,12 +1411,14 @@ class PostRepository {
                     pendingLoads -= 1
                     if (pendingLoads == 0) {
                         completed = true
+                        val followedSet = followedAuthorIds.toSet()
                         loadHiddenPostIds(
                             onSuccess = { hiddenIds ->
                                 loadBlockedAuthorIds(
                                     onSuccess = { blockedIds ->
                                         onSuccess(
                                             posts
+                                                .filter { it.authorId in followedSet }
                                                 .filterNot { hiddenIds.contains(it.postId) || blockedIds.contains(it.authorId) }
                                                 .sortedByDescending { it.createdAt?.seconds ?: 0L }
                                         )
@@ -1279,6 +1426,7 @@ class PostRepository {
                                     onFailure = {
                                         onSuccess(
                                             posts
+                                                .filter { it.authorId in followedSet }
                                                 .filterNot { hiddenIds.contains(it.postId) }
                                                 .sortedByDescending { it.createdAt?.seconds ?: 0L }
                                         )
@@ -1286,7 +1434,7 @@ class PostRepository {
                                 )
                             },
                             onFailure = {
-                                onSuccess(posts.sortedByDescending { it.createdAt?.seconds ?: 0L })
+                                onSuccess(posts.filter { it.authorId in followedSet }.sortedByDescending { it.createdAt?.seconds ?: 0L })
                             }
                         )
                     }
@@ -1472,12 +1620,25 @@ class PostRepository {
         ).any { it.contains(query, ignoreCase = true) }
     }
 
+    private fun Post.isPastActivityDate(): Boolean {
+        val rawDate = activityDate.trim()
+        if (rawDate.isBlank()) return false
+        val parsed = listOf("yyyy-MM-dd", "dd/MM/yyyy", "MMM d, yyyy").firstNotNullOfOrNull { pattern ->
+            runCatching { SimpleDateFormat(pattern, Locale.US).parse(rawDate) }.getOrNull()
+        } ?: return false
+        return parsed.before(Date(System.currentTimeMillis() - 24L * 60L * 60L * 1000L))
+    }
+
     private companion object {
+        const val TAG_LIKE = "PostLikeDebug"
+        const val TAG_COMMENT = "PostCommentDebug"
+        const val TAG_PERMISSION = "FirestorePermissionDebug"
         const val FIRESTORE_WHERE_IN_LIMIT = 10
         const val RECOMMENDATION_PROFILE_COLLECTION = "recommendationProfile"
         const val RECOMMENDATION_PROFILE_DOCUMENT = "main"
         const val POST_TYPE_REGULAR = "regular"
         const val POST_TYPE_DANCE_ACTIVITY = "dance_activity"
+        const val POST_TYPE_REPOST = "repost"
         const val LIKES_COLLECTION = "likes"
         const val COMMENTS_COLLECTION = "comments"
         const val SAVES_COLLECTION = "saves"

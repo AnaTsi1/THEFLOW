@@ -24,6 +24,9 @@
     <dimen name="flow_card_padding">16dp</dimen>
     <dimen name="flow_touch_size">44dp</dimen>
     <dimen name="flow_icon_size">22dp</dimen>
+    <dimen name="flow_content_max_width">720dp</dimen>
+    <dimen name="flow_dialog_max_width">620dp</dimen>
+    <dimen name="flow_drawer_width">304dp</dimen>
     <dimen name="flow_title_text">28sp</dimen>
     <dimen name="flow_section_title_text">18sp</dimen>
     <dimen name="flow_body_text">14sp</dimen>

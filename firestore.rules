@@ -74,6 +74,21 @@ service cloud.firestore {
       return !('visibility' in resource.data) || resource.data.visibility == 'public';
     }
 
+    function postPath(postId) {
+      return /databases/$(database)/documents/posts/$(postId);
+    }
+
+    function canReadPost(postId) {
+      return signedIn()
+        && exists(postPath(postId))
+        && (
+          !('visibility' in get(postPath(postId)).data)
+          || get(postPath(postId)).data.visibility == 'public'
+          || get(postPath(postId)).data.authorId == request.auth.uid
+          || isAdmin()
+        );
+    }
+
     function previousLikesCount() {
       return ('likesCount' in resource.data) ? resource.data.likesCount : 0;
     }
@@ -118,7 +133,7 @@ service cloud.firestore {
       return signedIn()
         && isPublicPost()
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['registrationsCount', 'waitlistCount'])
+          .hasOnly(['registrationsCount', 'waitlistCount', 'updatedAt'])
         && request.resource.data.registrationsCount >= 0
         && request.resource.data.waitlistCount >= 0
         && (
@@ -171,8 +186,113 @@ service cloud.firestore {
         'professional_approved',
         'professional_rejected',
         'event_updated',
-        'event_recommended'
+        'event_recommended',
+        'job_recommended',
+        'job_application_received',
+        'job_application_updated'
       ];
+    }
+
+    function canPublishJobForStudio(studioId) {
+      return signedIn()
+        && exists(userDoc(request.auth.uid))
+        && (
+          get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin']
+          || get(userDoc(request.auth.uid)).data.verifiedChoreographer == true
+          || (
+            studioId is string
+            && studioId != ''
+            && 'managedStudioIds' in get(userDoc(request.auth.uid)).data
+            && studioId in get(userDoc(request.auth.uid)).data.managedStudioIds
+          )
+        );
+    }
+
+    function canPublishOwnJob() {
+      return signedIn()
+        && exists(userDoc(request.auth.uid))
+        && (
+          get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin']
+          || get(userDoc(request.auth.uid)).data.verifiedChoreographer == true
+        );
+    }
+
+    function jobPath(jobId) {
+      return /databases/$(database)/documents/jobs/$(jobId);
+    }
+
+    function canManageJob(jobId) {
+      return signedIn()
+        && exists(jobPath(jobId))
+        && (
+          isAdmin()
+          || get(jobPath(jobId)).data.creatorId == request.auth.uid
+          || (
+            get(jobPath(jobId)).data.studioId is string
+            && get(jobPath(jobId)).data.studioId != ''
+            && exists(userDoc(request.auth.uid))
+            && 'managedStudioIds' in get(userDoc(request.auth.uid)).data
+            && get(jobPath(jobId)).data.studioId in get(userDoc(request.auth.uid)).data.managedStudioIds
+          )
+        );
+    }
+
+    function createsOwnJob(jobId) {
+      return signedIn()
+        && request.resource.data.jobId == jobId
+        && request.resource.data.creatorId == request.auth.uid
+        && request.resource.data.status in ['active', 'closed', 'filled']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.employerName is string
+        && request.resource.data.employerName.size() > 0
+        && request.resource.data.city is string
+        && request.resource.data.city.size() > 0
+        && (
+          (
+            (!('studioId' in request.resource.data) || request.resource.data.studioId == '')
+            && canPublishOwnJob()
+          )
+          || canPublishJobForStudio(request.resource.data.studioId)
+        );
+    }
+
+    function keepsJobOwnershipSafe() {
+      return request.resource.data.creatorId == resource.data.creatorId
+        && request.resource.data.studioId == resource.data.studioId;
+    }
+
+    function applicationIdFor(jobId, applicantId) {
+      return jobId + '_' + applicantId;
+    }
+
+    function createsOwnJobApplication(applicationId) {
+      return signedIn()
+        && request.resource.data.applicationId == applicationId
+        && request.resource.data.applicantId == request.auth.uid
+        && applicationId == applicationIdFor(request.resource.data.jobId, request.auth.uid)
+        && exists(jobPath(request.resource.data.jobId))
+        && get(jobPath(request.resource.data.jobId)).data.status == 'active'
+        && get(jobPath(request.resource.data.jobId)).data.creatorId != request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.introduction is string
+        && request.resource.data.introduction.size() > 0;
+    }
+
+    function applicantKeepsSubmittedFieldsSafe() {
+      return request.resource.data.applicationId == resource.data.applicationId
+        && request.resource.data.jobId == resource.data.jobId
+        && request.resource.data.applicantId == resource.data.applicantId
+        && request.resource.data.applicantName == resource.data.applicantName
+        && request.resource.data.introduction == resource.data.introduction
+        && request.resource.data.experience == resource.data.experience
+        && request.resource.data.portfolioUrl == resource.data.portfolioUrl
+        && request.resource.data.status == 'withdrawn';
+    }
+
+    function employerStatusOnlyUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['submitted', 'viewed', 'contacted', 'accepted', 'rejected', 'withdrawn'];
     }
 
     match /users/{uid} {
@@ -187,15 +307,21 @@ service cloud.firestore {
       }
 
       match /followingDancers/{followId} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow get: if isOwner(uid) || isOwner(followId) || isAdmin();
+        allow list: if isOwner(uid) || isAdmin();
+        allow create, update, delete: if isOwner(uid) || isAdmin();
       }
 
       match /followingTeachers/{followId} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow get: if isOwner(uid) || isOwner(followId) || isAdmin();
+        allow list: if isOwner(uid) || isAdmin();
+        allow create, update, delete: if isOwner(uid) || isAdmin();
       }
 
       match /followingStudios/{followId} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow get: if isOwner(uid) || isOwner(followId) || isAdmin();
+        allow list: if isOwner(uid) || isAdmin();
+        allow create, update, delete: if isOwner(uid) || isAdmin();
       }
 
       match /followers/{followerId} {
@@ -227,6 +353,10 @@ service cloud.firestore {
         allow read, write: if isOwner(uid) || isAdmin();
       }
 
+      match /savedJobs/{savedId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
       match /favoritePosts/{favoriteId} {
         allow read, write: if isOwner(uid) || isAdmin();
       }
@@ -255,24 +385,39 @@ service cloud.firestore {
       allow delete: if isPostAuthor() || isAdmin();
 
       match /likes/{uid} {
-        allow read: if signedIn();
-        allow write: if isOwner(uid) || isAdmin();
+        allow read: if canReadPost(postId);
+        allow create, update: if (isOwner(uid) || isAdmin())
+          && request.resource.data.userId == uid
+          && request.resource.data.userId == request.auth.uid;
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /comments/{commentId} {
-        allow read: if signedIn();
-        allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+        allow read: if canReadPost(postId);
+        allow create: if canReadPost(postId)
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.postId == postId
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0;
         allow update, delete: if isAdmin()
           || (signedIn() && resource.data.authorId == request.auth.uid);
 
         match /likes/{uid} {
-          allow read: if signedIn();
-          allow write: if isOwner(uid) || isAdmin();
+          allow read: if canReadPost(postId);
+          allow create, update: if (isOwner(uid) || isAdmin())
+            && request.resource.data.userId == uid
+            && request.resource.data.userId == request.auth.uid;
+          allow delete: if isOwner(uid) || isAdmin();
         }
 
         match /replies/{replyId} {
-          allow read: if signedIn();
-          allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+          allow read: if canReadPost(postId);
+          allow create: if canReadPost(postId)
+            && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.postId == postId
+            && request.resource.data.commentId == commentId
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0;
           allow update, delete: if isAdmin()
             || (signedIn() && resource.data.authorId == request.auth.uid);
         }
@@ -312,6 +457,36 @@ service cloud.firestore {
           isApprovedProfessional()
           && resource.data.creatorUid == request.auth.uid
         );
+    }
+
+    match /jobs/{jobId} {
+      allow get, list: if signedIn();
+      allow create: if createsOwnJob(jobId);
+      allow update: if canManageJob(jobId)
+        && keepsJobOwnershipSafe()
+        && request.resource.data.status in ['active', 'closed', 'filled'];
+      allow delete: if canManageJob(jobId);
+    }
+
+    match /jobApplications/{applicationId} {
+      allow get, list: if signedIn()
+        && (
+          resource.data.applicantId == request.auth.uid
+          || canManageJob(resource.data.jobId)
+        );
+      allow create: if createsOwnJobApplication(applicationId);
+      allow update: if signedIn()
+        && (
+          (
+            resource.data.applicantId == request.auth.uid
+            && applicantKeepsSubmittedFieldsSafe()
+          )
+          || (
+            canManageJob(resource.data.jobId)
+            && employerStatusOnlyUpdate()
+          )
+        );
+      allow delete: if false;
     }
 
     match /studios/{studioId} {

@@ -2,6 +2,9 @@ package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.model.post.Post
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class RecommendationResult(
     val item: DiscoveryItem,
@@ -26,13 +29,49 @@ object RecommendationEngine {
         posts: List<Post>,
         profile: PostRecommendationProfile
     ): List<Post> {
-        return posts.sortedWith(
+        return diversifyPosts(posts.sortedWith(
             compareByDescending<Post> { post ->
-                profile.targetTypeScores[scoreKey(post.authorType)] ?: 0
+                postRecommendationScore(post, profile)
             }.thenByDescending { post ->
                 post.createdAt?.seconds ?: 0L
             }
-        )
+        ))
+    }
+
+    private fun postRecommendationScore(post: Post, profile: PostRecommendationProfile): Int {
+        var score = profile.targetTypeScores[scoreKey(post.authorType)] ?: 0
+        score += post.likesCount.toInt().coerceAtMost(40)
+        score += (post.commentsCount * 2).toInt().coerceAtMost(40)
+        if (post.postType == POST_TYPE_DANCE_ACTIVITY) {
+            score += if (isPastEvent(post)) -80 else 18
+            if (post.activityLevel.isNotBlank()) score += 4
+            if (post.activityLocation.isNotBlank()) score += 4
+        }
+        if (post.mediaUrls.isNotEmpty() || post.mediaItems.any { it.url.isNotBlank() }) score += 6
+        if (post.originalPostId.isNotBlank()) score -= 4
+        return score
+    }
+
+    private fun diversifyPosts(posts: List<Post>): List<Post> {
+        val remaining = posts.toMutableList()
+        val result = mutableListOf<Post>()
+        while (remaining.isNotEmpty()) {
+            val previousAuthor = result.lastOrNull()?.authorId
+            val previousType = result.lastOrNull()?.postType
+            val index = remaining.indexOfFirst { candidate ->
+                candidate.authorId != previousAuthor && candidate.postType != previousType
+            }.takeIf { it >= 0 } ?: 0
+            result.add(remaining.removeAt(index))
+        }
+        return result
+    }
+
+    private fun isPastEvent(post: Post): Boolean {
+        if (post.postType != POST_TYPE_DANCE_ACTIVITY || post.activityDate.isBlank()) return false
+        val parsed = listOf("yyyy-MM-dd", "dd/MM/yyyy", "MMM d, yyyy").firstNotNullOfOrNull { pattern ->
+            runCatching { SimpleDateFormat(pattern, Locale.US).parse(post.activityDate.trim()) }.getOrNull()
+        } ?: return false
+        return parsed.before(Date(System.currentTimeMillis() - 24L * 60L * 60L * 1000L))
     }
 
     // Calculates a recommendation score for one item.
@@ -236,4 +275,6 @@ object RecommendationEngine {
             .ifBlank { "unknown" }
             .replace(Regex("[^A-Za-z0-9_-]"), "_")
     }
+
+    private const val POST_TYPE_DANCE_ACTIVITY = "dance_activity"
 }

@@ -12,12 +12,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.messaging.Conversation
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.MessagingRepository
 import com.ana.theflow.databinding.FragmentConversationsBinding
+import com.ana.theflow.ui.common.ResponsiveLayout
+import com.ana.theflow.ui.common.UiText
 import com.bumptech.glide.Glide
 import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
@@ -30,6 +33,7 @@ class ConversationsFragment : Fragment() {
     private val binding get() = _binding!!
     private val messagingRepository = MessagingRepository()
     private val authRepository = AuthRepository()
+    private val viewModel: ConversationsViewModel by activityViewModels()
     private var conversationsListener: ListenerRegistration? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -39,27 +43,38 @@ class ConversationsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.conversationsBTNNew.setOnClickListener {
-            Toast.makeText(requireContext(), "Open a dancer profile to start a message.", Toast.LENGTH_SHORT).show()
-            (requireActivity() as MainActivity).openSearch()
+            (requireActivity() as MainActivity).openNewMessage()
         }
+        (binding.root as? ViewGroup)?.let { root ->
+            ResponsiveLayout.constrainToReadableWidth(*Array(root.childCount) { index -> root.getChildAt(index) })
+        }
+        ResponsiveLayout.ensureTouchTarget(binding.conversationsBTNNew)
+        if (viewModel.conversations.isNotEmpty()) renderConversations(viewModel.conversations)
         listen()
     }
 
     private fun listen() {
-        binding.conversationsProgress.visibility = View.VISIBLE
-        binding.conversationsLBLMessage.visibility = View.GONE
+        binding.conversationsProgress.visibility = if (viewModel.conversations.isEmpty()) View.VISIBLE else View.GONE
+        binding.conversationsLBLMessage.visibility = if (viewModel.conversations.isEmpty()) View.GONE else binding.conversationsLBLMessage.visibility
         conversationsListener?.remove()
         conversationsListener = messagingRepository.listenToConversations(
             onUpdate = { conversations ->
                 if (_binding == null) return@listenToConversations
+                viewModel.conversations = conversations
+                viewModel.error = ""
                 binding.conversationsProgress.visibility = View.GONE
                 renderConversations(conversations)
             },
             onError = { error ->
                 if (_binding == null) return@listenToConversations
+                viewModel.error = error
                 binding.conversationsProgress.visibility = View.GONE
-                binding.conversationsLBLMessage.text = error
-                binding.conversationsLBLMessage.visibility = View.VISIBLE
+                if (viewModel.conversations.isEmpty()) {
+                    binding.conversationsLBLMessage.text = UiText.friendlyError(error, "We could not load your messages. Please try again.")
+                    binding.conversationsLBLMessage.visibility = View.VISIBLE
+                } else {
+                    Toast.makeText(requireContext(), UiText.friendlyError(error, "Messages could not refresh."), Toast.LENGTH_SHORT).show()
+                }
             }
         )
     }
@@ -68,7 +83,7 @@ class ConversationsFragment : Fragment() {
         val currentUid = authRepository.getCurrentUserUid().orEmpty()
         binding.conversationsLAYList.removeAllViews()
         binding.conversationsLBLMessage.visibility = if (conversations.isEmpty()) View.VISIBLE else View.GONE
-        binding.conversationsLBLMessage.text = "No conversations yet. Open a profile and tap the message icon."
+        binding.conversationsLBLMessage.text = "No conversations yet. Start a new message when you're ready."
         conversations.forEach { conversation ->
             binding.conversationsLAYList.addView(conversationRow(conversation, currentUid))
         }

@@ -18,6 +18,7 @@ import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.StudioClaimRepository
 import com.ana.theflow.databinding.FragmentDetailBinding
+import com.ana.theflow.ui.common.UiText
 
 class DetailFragment : Fragment() {
 
@@ -66,7 +67,7 @@ class DetailFragment : Fragment() {
                     if (_binding == null) return@saveItem
                     binding.detailBTNSave.isEnabled = true
                     binding.detailBTNSave.text = "Save"
-                    Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not save this item."), Toast.LENGTH_LONG).show()
                 }
             )
         }
@@ -214,7 +215,7 @@ class DetailFragment : Fragment() {
                 if (_binding == null) return@submitClaim
                 binding.detailBTNClaimStudio.isEnabled = true
                 binding.detailBTNClaimStudio.text = "Claim Studio"
-                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not submit this claim."), Toast.LENGTH_LONG).show()
             }
         )
     }
@@ -250,7 +251,11 @@ class DetailFragment : Fragment() {
 
     private fun detailBody(selected: DiscoveryItem): String {
         if (selected.source != DiscoveryItem.SOURCE_GOOGLE) {
-            return "Schedule\n${selected.time}\n\nThis detail view is ready for Firestore-backed class and studio data."
+            return listOf(
+                selected.time.takeIf { it.isNotBlank() && !it.equals("Schedule pending", ignoreCase = true) }?.let { "Schedule: $it" },
+                selected.address.takeIf { it.isNotBlank() }?.let { "Address: $it" },
+                selected.priceText.takeIf { it.isNotBlank() }?.let { "Price: $it" }
+            ).filterNotNull().joinToString("\n").ifBlank { "Details will appear here when the organizer adds them." }
         }
         val ratingText = selected.rating?.let { rating ->
             val count = selected.ratingCount?.let { " ($it)" }.orEmpty()

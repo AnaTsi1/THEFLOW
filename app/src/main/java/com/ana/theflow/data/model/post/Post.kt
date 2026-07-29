@@ -32,7 +32,10 @@ data class Post(
     val createdAt: Timestamp? = null,
     val visibility: String = "public",
     val likesCount: Long = 0,
-    val commentsCount: Long = 0
+    val commentsCount: Long = 0,
+    val originalPostId: String = "",
+    val originalAuthorId: String = "",
+    val originalAuthorName: String = ""
 )
 
 data class PostMediaItem(

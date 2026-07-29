@@ -1,6 +1,12 @@
 const CITIES = ["Tel Aviv", "Ramat Gan", "Givatayim", "Haifa", "Jerusalem", "Beer Sheva", "Herzliya", "Netanya"];
 const STYLES = ["Hip Hop", "Heels", "Ballet", "Contemporary", "Salsa", "Bachata", "Jazz", "Afro", "House", "Breaking"];
 const LEVELS = ["Beginner", "Intermediate", "Advanced", "Open level"];
+const DEMO_IMAGES = [
+  "https://commons.wikimedia.org/wiki/Special:FilePath/Ballet%20Dancer.jpg",
+  "https://commons.wikimedia.org/wiki/Special:FilePath/The%20lone%20ballet%20dancer.jpg",
+  "https://commons.wikimedia.org/wiki/Special:FilePath/Sf%20hiphop.jpg",
+  "https://commons.wikimedia.org/wiki/Special:FilePath/Ballet-dancer%2001.jpg"
+];
 
 const PERSONAS = [
   { key: "hipheels_tlv", styles: ["Hip Hop", "Heels"], level: "Intermediate", city: "Tel Aviv" },
@@ -16,16 +22,21 @@ const STUDIO_NAMES = ["Beat Room", "Studio Luna", "Latin House", "Move Hub", "No
 
 function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = {}) {
   const full = size === "full";
-  const dancerCount = full ? 32 : 5;
-  const professionalCount = full ? 10 : 2;
+  const dancerCount = full ? 22 : 5;
+  const professionalCount = full ? 8 : 2;
   const studioCount = full ? 9 : 2;
-  const postCount = full ? 80 : 10;
-  const eventCount = full ? 24 : 5;
+  const postCount = full ? 55 : 10;
+  const eventCount = full ? 12 : 5;
+  const jobCount = full ? 20 : 4;
 
   const demoMeta = { isDemo: true, seedBatchId };
   const users = [];
   const studios = [];
   const posts = [];
+  const jobs = [];
+  const jobApplications = [];
+  const savedJobs = [];
+  const notifications = [];
   const comments = [];
   const likes = [];
   const savedItems = [];
@@ -45,17 +56,17 @@ function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = 
       lastName: LAST_NAMES[i % LAST_NAMES.length],
       birthDate: "1998-01-01",
       age: 20 + (i % 18),
-      role: professional ? "dancer" : "dancer",
+      role: "dancer",
       verifiedTeacher: professional && i % 2 === 0,
       verifiedChoreographer: professional && i % 2 === 1,
       professionalBadges: professional ? [i % 2 === 0 ? "Verified Teacher" : "Choreographer"] : [],
       managedStudioIds: [],
       onboardingCompleted: true,
-      coverImageUrl: "",
+      coverImageUrl: DEMO_IMAGES[(i + 1) % DEMO_IMAGES.length],
       danceStyles: persona.styles,
       danceLevel: persona.level,
       location: persona.city,
-      profileImageUrl: "",
+      profileImageUrl: DEMO_IMAGES[i % DEMO_IMAGES.length],
       headline: professional ? `${persona.styles[0]} teacher in ${persona.city}` : `${persona.level} dancer exploring ${persona.styles.join(" and ")}`,
       bio: `Demo profile for recommendation testing. Interests: ${persona.styles.join(", ")}.`,
       professionalBackground: professional ? `Teaches ${persona.styles.join(" and ")} around ${persona.city}.` : "",
@@ -106,8 +117,8 @@ function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = 
       bio: `Demo studio focused on ${persona.styles.join(", ")}.`,
       location: persona.city,
       danceStyles: persona.styles,
-      profileImageUrl: "",
-      coverImageUrl: "",
+      profileImageUrl: DEMO_IMAGES[i % DEMO_IMAGES.length],
+      coverImageUrl: DEMO_IMAGES[(i + 2) % DEMO_IMAGES.length],
       socialLinks: {},
       status: "APPROVED",
       claimStatus: "",
@@ -116,6 +127,16 @@ function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = 
       ...demoMeta
     });
   }
+
+  studios.forEach((studio, index) => {
+    const manager = users[dancerCount + (index % professionalCount)];
+    if (!manager) return;
+    manager.role = "studio_manager";
+    manager.managedStudioIds = Array.from(new Set([...(manager.managedStudioIds || []), studio.id]));
+    manager.professionalBadges = Array.from(new Set([...(manager.professionalBadges || []), "Studio Manager"]));
+    studio.managerUids = [manager.uid];
+    studio.ownerUid = manager.uid;
+  });
 
   for (let i = 0; i < postCount + eventCount; i += 1) {
     const author = users[i % users.length];
@@ -133,9 +154,16 @@ function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = 
       text: isEvent
         ? `${style} ${persona.level} session at ${studio.displayName}. Demo event for recommendations.`
         : `Working on ${style} flow in ${persona.city}. Demo post for THE FLOW.`,
-      mediaUrls: [],
-      mediaItems: [],
-      mediaType: "none",
+      mediaUrls: i % 3 === 0 ? [DEMO_IMAGES[i % DEMO_IMAGES.length]] : [],
+      mediaItems: i % 3 === 0 ? [{
+        id: `${id}_media_01`,
+        url: DEMO_IMAGES[i % DEMO_IMAGES.length],
+        mediaType: "photo",
+        visibleInMedia: true,
+        pinned: false,
+        uploadedAt: Date.now()
+      }] : [],
+      mediaType: i % 3 === 0 ? "photo" : "none",
       postType: isEvent ? "dance_activity" : i % 5 === 0 ? "collaboration" : "regular",
       activityType: isEvent ? `${style} class` : "",
       activityLocation: isEvent ? persona.city : "",
@@ -158,6 +186,19 @@ function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = 
       ...demoMeta
     });
   }
+
+  posts.forEach((post, index) => {
+    if (index < 6 || index % 17 !== 0 || post.postType === "dance_activity") return;
+    const original = posts[(index - 5) % index];
+    post.postType = "repost";
+    post.text = "";
+    post.mediaUrls = [];
+    post.mediaItems = [];
+    post.mediaType = "none";
+    post.originalPostId = original.postId;
+    post.originalAuthorId = original.authorId;
+    post.originalAuthorName = original.authorName;
+  });
 
   posts.forEach((post, index) => {
     const interested = users.filter((user) => user.uid !== post.authorId && overlaps(user.danceStyles, [post.activityType.split(" ")[0], post.collaborationStyle, post.text]));
@@ -223,12 +264,107 @@ function buildDemoData({ size = "small", seedBatchId = "demo-local-preview" } = 
     }
   });
 
+  for (let i = 0; i < jobCount; i += 1) {
+    const studio = studios[i % studios.length];
+    const publishedByStudio = i % 2 === 0;
+    const professional = publishedByStudio
+      ? users.find((user) => (user.managedStudioIds || []).includes(studio.id))
+      : users.find((user, index) => index >= dancerCount && user.verifiedChoreographer)
+        || users[dancerCount];
+    const persona = PERSONAS[i % PERSONAS.length];
+    const id = `${seedBatchId}_job_${String(i + 1).padStart(2, "0")}`;
+    const status = i % 9 === 0 ? "filled" : i % 7 === 0 ? "closed" : "active";
+    jobs.push({
+      jobId: id,
+      title: [
+        "Dance Teacher",
+        "Choreographer",
+        "Studio Receptionist",
+        "Workshop Instructor",
+        "Backup Dancer",
+        "Dance Content Creator",
+        "Dance Photographer"
+      ][i % 7],
+      employerName: publishedByStudio ? studio.displayName : `${professional.firstName} ${professional.lastName}`,
+      employerImageUrl: publishedByStudio ? studio.profileImageUrl : professional.profileImageUrl,
+      city: persona.city,
+      location: persona.city,
+      workType: ["on_site", "hybrid", "remote"][i % 3],
+      jobType: ["freelance", "part_time", "one_time", "temporary", "full_time"][i % 5],
+      danceStyles: persona.styles,
+      experienceLevel: LEVELS[i % LEVELS.length],
+      description: `Demo ${persona.styles[0]} opportunity in ${persona.city}. Looking for reliable dance community talent with strong communication and presence.`,
+      requirements: [`${persona.styles[0]} experience`, "Available for rehearsals", "Portfolio or social link preferred"],
+      paymentText: i % 4 === 0 ? "Paid, rate discussed with selected candidates" : "",
+      deadlineAt: "__SERVER_TIMESTAMP__",
+      contactMethod: "Apply in THE FLOW",
+      externalApplyUrl: i % 6 === 0 ? "https://example.com/the-flow-demo-job" : "",
+      status,
+      creatorId: professional.uid,
+      studioId: publishedByStudio ? studio.id : "",
+      createdAt: "__SERVER_TIMESTAMP__",
+      updatedAt: "__SERVER_TIMESTAMP__",
+      ...demoMeta
+    });
+  }
+
+  jobs.filter((job) => job.status === "active").slice(0, full ? 12 : 3).forEach((job, index) => {
+    const applicant = users[index % dancerCount];
+    const applicationId = `${job.jobId}_${applicant.uid}`;
+    jobApplications.push({
+      applicationId,
+      jobId: job.jobId,
+      applicantId: applicant.uid,
+      applicantName: `${applicant.firstName} ${applicant.lastName}`,
+      introduction: `I am interested in this ${job.danceStyles[0]} opportunity and available for a demo interview.`,
+      experience: `${applicant.danceLevel} dancer in ${applicant.location}.`,
+      portfolioUrl: "",
+      status: ["submitted", "viewed", "contacted", "accepted", "rejected"][index % 5],
+      createdAt: "__SERVER_TIMESTAMP__",
+      updatedAt: "__SERVER_TIMESTAMP__",
+      ...demoMeta
+    });
+    savedJobs.push({
+      uid: applicant.uid,
+      jobId: job.jobId,
+      data: {
+        jobId: job.jobId,
+        title: job.title,
+        employerName: job.employerName,
+        city: job.city,
+        workType: job.workType,
+        jobType: job.jobType,
+        danceStyles: job.danceStyles,
+        status: job.status,
+        savedAt: "__SERVER_TIMESTAMP__",
+        ...demoMeta
+      }
+    });
+    notifications.push({
+      uid: job.creatorId,
+      notificationId: `${seedBatchId}_notification_${applicationId}`,
+      data: {
+        notificationId: `${seedBatchId}_notification_${applicationId}`,
+        type: "job_application_received",
+        actorId: applicant.uid,
+        actorName: `${applicant.firstName} ${applicant.lastName}`,
+        actorProfileImageUrl: applicant.profileImageUrl,
+        applicationId,
+        title: "New job application",
+        message: `New application for ${job.title}.`,
+        createdAt: "__SERVER_TIMESTAMP__",
+        isRead: false,
+        ...demoMeta
+      }
+    });
+  });
+
   posts.forEach((post) => {
     post.likesCount = likes.filter((like) => like.postId === post.postId).length;
     post.commentsCount = comments.filter((comment) => comment.postId === post.postId).length;
   });
 
-  return { seedBatchId, size, users, studios, posts, comments, likes, savedItems, follows, activityEvents, recommendationProfiles };
+  return { seedBatchId, size, users, studios, posts, jobs, jobApplications, savedJobs, notifications, comments, likes, savedItems, follows, activityEvents, recommendationProfiles };
 }
 
 function defaultNotificationSettings() {

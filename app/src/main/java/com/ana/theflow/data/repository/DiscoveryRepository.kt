@@ -428,12 +428,13 @@ object DiscoveryRepository {
         query: String = "",
         city: String = "",
         location: Location? = null,
+        usePreferredCityFallback: Boolean = true,
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
         GooglePlacesStudioDataSource(context).searchStudios(
             query = query,
-            city = city.ifBlank { preferredLocation },
+            city = city.ifBlank { if (usePreferredCityFallback) preferredLocation else "" },
             location = location,
             onSuccess = { studios ->
                 externalItems = studios

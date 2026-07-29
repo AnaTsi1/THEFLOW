@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/discover_SCROLL_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_discover_screen"
@@ -18,9 +19,10 @@
         android:paddingBottom="24dp">
 
         <TextView
+            android:id="@+id/discover_LBL_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/discover_title"
+            android:text="Discover"
             android:textColor="@color/discover_ink"
             android:textSize="28sp"
             android:textStyle="bold" />
@@ -31,7 +33,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:lineSpacingExtra="2dp"
-            android:text="@string/discover_subtitle"
+            android:text="Find classes, events, studios, and dancers that fit your flow."
             android:textColor="@color/discover_text_secondary"
             android:textSize="14sp" />
 
@@ -41,101 +43,125 @@
             android:layout_height="54dp"
             android:layout_marginTop="@dimen/discover_section_gap"
             android:background="@drawable/bg_discover_input"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="8dp">
 
-            <EditText
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_discover_24"
+                android:tint="@color/discover_text_muted" />
+
+            <TextView
                 android:id="@+id/discover_EDT_search"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:hint="@string/discover_search_hint"
-                android:imeOptions="actionSearch"
-                android:inputType="text"
-                android:paddingStart="16dp"
-                android:paddingEnd="8dp"
-                android:singleLine="true"
-                android:textColor="@color/discover_ink"
-                android:textColorHint="@color/discover_text_muted"
+                android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                android:text="Search styles, studios, teachers, events..."
+                android:textColor="@color/discover_text_muted"
                 android:textSize="14sp" />
-
-            <ImageButton
-                android:id="@+id/discover_BTN_advanced"
-                android:layout_width="@dimen/discover_touch_size"
-                android:layout_height="@dimen/discover_touch_size"
-                android:layout_marginEnd="5dp"
-                android:background="@drawable/bg_discover_icon_button"
-                android:contentDescription="@string/discover_filter_options"
-                android:padding="10dp"
-                android:src="@drawable/ic_more_horizontal_24"
-                android:tint="@color/discover_purple" />
         </LinearLayout>
 
-        <HorizontalScrollView
-            android:id="@+id/discover_SCROLL_personal_chips"
+        <ProgressBar
+            android:id="@+id/discover_PRG_searching"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/discover_section_gap"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/discover_purple"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/discover_LBL_recommended_title"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="10dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/discover_section_gap"
+            android:text="Recommended for You"
+            android:textColor="@color/discover_ink"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:overScrollMode="never"
             android:scrollbars="none">
 
             <LinearLayout
-                android:id="@+id/discover_LAY_personal_chips"
+                android:id="@+id/discover_LAY_recommended"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:orientation="horizontal" />
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingEnd="4dp" />
         </HorizontalScrollView>
 
-        <LinearLayout
-            android:id="@+id/discover_LAY_mode_tabs"
+        <TextView
+            android:id="@+id/discover_LBL_popular_title"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/discover_touch_size"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/discover_section_gap"
+            android:text="Trending This Week"
+            android:textColor="@color/discover_ink"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/discover_TAB_for_you"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/bg_discover_segment_active"
-                android:gravity="center"
-                android:text="@string/discover_tab_for_you"
-                android:textColor="@color/white"
-                android:textStyle="bold" />
+        <LinearLayout
+            android:id="@+id/discover_LAY_popular"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
 
-            <TextView
-                android:id="@+id/discover_TAB_map"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_discover_segment_inactive"
-                android:gravity="center"
-                android:text="@string/discover_tab_map"
-                android:textColor="@color/discover_text_secondary"
-                android:textStyle="bold" />
+        <TextView
+            android:id="@+id/discover_LBL_search_results_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/discover_section_gap"
+            android:text="Studios You May Like"
+            android:textColor="@color/discover_ink"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/discover_TAB_search"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_discover_segment_inactive"
-                android:gravity="center"
-                android:text="@string/discover_tab_search"
-                android:textColor="@color/discover_text_secondary"
-                android:textStyle="bold"
-                android:visibility="gone" />
-        </LinearLayout>
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/discover_LAY_search_results"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingEnd="4dp" />
+        </HorizontalScrollView>
+
+        <TextView
+            android:id="@+id/discover_LBL_map_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/discover_section_gap"
+            android:text="Explore Near You"
+            android:textColor="@color/discover_ink"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <FrameLayout
             android:id="@+id/discover_LAY_map"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/discover_map_height"
-            android:layout_marginTop="@dimen/discover_section_gap"
+            android:layout_height="210dp"
+            android:layout_marginTop="10dp"
             android:background="@drawable/bg_discover_map"
             android:padding="2dp"
             android:visibility="gone">
@@ -156,240 +182,12 @@
                 android:minWidth="0dp"
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
-                android:text="@string/discover_search_area"
+                android:text="Open Map"
                 android:textAllCaps="false"
                 android:textColor="@color/white"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/discover_BTN_map_recommended"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_gravity="top|start"
-                android:layout_margin="12dp"
-                android:background="@drawable/bg_discover_segment_inactive"
-                android:minWidth="0dp"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:text="@string/discover_map_recommended"
-                android:textAllCaps="false"
-                android:textColor="@color/discover_purple"
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </FrameLayout>
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_search_types"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/discover_CHIP_users"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/bg_discover_segment_active"
-                android:gravity="center"
-                android:text="@string/discover_search_all"
-                android:textColor="@color/white"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/discover_CHIP_activities"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_discover_segment_inactive"
-                android:gravity="center"
-                android:text="@string/discover_search_activities"
-                android:textColor="@color/discover_text_secondary"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/discover_CHIP_studios"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_discover_segment_inactive"
-                android:gravity="center"
-                android:text="@string/discover_search_studios"
-                android:textColor="@color/discover_text_secondary"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/discover_CHIP_dancers"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_discover_segment_inactive"
-                android:gravity="center"
-                android:text="@string/discover_search_people"
-                android:textColor="@color/discover_text_secondary"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_advanced"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_discover_card"
-            android:orientation="vertical"
-            android:padding="@dimen/discover_card_padding"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <AutoCompleteTextView
-                    android:id="@+id/discover_EDT_style"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_discover_input"
-                    android:hint="@string/discover_filter_style"
-                    android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:textColor="@color/discover_ink"
-                    android:textColorHint="@color/discover_text_muted" />
-
-                <AutoCompleteTextView
-                    android:id="@+id/discover_EDT_level"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_discover_input"
-                    android:hint="@string/discover_filter_level"
-                    android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:textColor="@color/discover_ink"
-                    android:textColorHint="@color/discover_text_muted" />
-            </LinearLayout>
-
-            <AutoCompleteTextView
-                android:id="@+id/discover_EDT_location"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_discover_input"
-                android:hint="@string/discover_filter_location"
-                android:imeOptions="actionSearch"
-                android:inputType="text"
-                android:textColor="@color/discover_ink"
-                android:textColorHint="@color/discover_text_muted" />
-
-            <EditText
-                android:id="@+id/discover_EDT_time"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_discover_input"
-                android:hint="@string/discover_filter_time"
-                android:imeOptions="actionSearch"
-                android:inputType="text"
-                android:textColor="@color/discover_ink"
-                android:textColorHint="@color/discover_text_muted" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/discover_BTN_apply_filters"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/discover_touch_size"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_discover_segment_active"
-                    android:text="@string/discover_apply_filters"
-                    android:textAllCaps="false"
-                    android:textColor="@color/white"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/discover_BTN_clear_filters"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/discover_touch_size"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_discover_segment_inactive"
-                    android:text="@string/discover_clear_filters"
-                    android:textAllCaps="false"
-                    android:textColor="@color/discover_purple"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <ProgressBar
-            android:id="@+id/discover_PRG_searching"
-            style="?android:attr/progressBarStyleSmall"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:indeterminate="true"
-            android:indeterminateTint="@color/discover_purple"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/discover_LBL_search_results_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="@string/discover_search_results"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_search_results"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <TextView
-            android:id="@+id/discover_LBL_recommended_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="@string/discover_recommended_title"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_recommended"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <TextView
-            android:id="@+id/discover_LBL_popular_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="@string/discover_popular_title"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_popular"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
 
         <TextView
             android:id="@+id/discover_LBL_google_attribution"

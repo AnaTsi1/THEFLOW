@@ -26,5 +26,8 @@ data class InAppNotification(
         const val PROFESSIONAL_REJECTED = "professional_rejected"
         const val EVENT_UPDATED = "event_updated"
         const val EVENT_RECOMMENDED = "event_recommended"
+        const val JOB_RECOMMENDED = "job_recommended"
+        const val JOB_APPLICATION_RECEIVED = "job_application_received"
+        const val JOB_APPLICATION_UPDATED = "job_application_updated"
     }
 }

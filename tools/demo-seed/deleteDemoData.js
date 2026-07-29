@@ -46,7 +46,7 @@ async function findDemoDocuments(db, batchId) {
   const documents = [];
   const userUids = [];
 
-  for (const collection of ["users", "studios", "posts", "studioClaims", "userActivityEvents"]) {
+  for (const collection of ["users", "studios", "posts", "jobs", "jobApplications", "studioClaims", "userActivityEvents"]) {
     const snapshot = await db.collection(collection)
       .where("isDemo", "==", true)
       .where("seedBatchId", "==", batchId)
@@ -57,7 +57,7 @@ async function findDemoDocuments(db, batchId) {
     });
   }
 
-  for (const group of ["likes", "comments", "savedItems", "followingDancers", "followingTeachers", "followingStudios", "followers", "recommendationProfile"]) {
+  for (const group of ["likes", "comments", "savedItems", "savedJobs", "notifications", "followingDancers", "followingTeachers", "followingStudios", "followers", "recommendationProfile"]) {
     const snapshot = await db.collectionGroup(group)
       .where("isDemo", "==", true)
       .where("seedBatchId", "==", batchId)

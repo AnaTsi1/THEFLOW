@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -34,6 +35,9 @@ import com.ana.theflow.data.repository.StorageRepository
 import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.databinding.FragmentProfileBinding
 import com.ana.theflow.ui.common.PostCardRenderer
+import com.ana.theflow.ui.common.ResponsiveLayout
+import com.ana.theflow.ui.common.UiText
+import com.ana.theflow.ui.settings.EditProfileFragment
 import com.ana.theflow.utilities.CityOptions
 
 // Coordinates profile data, media upload, follow actions, messaging entry, and profile posts.
@@ -103,8 +107,17 @@ class ProfileFragment : Fragment() {
 
     // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        (binding.root as? android.widget.ScrollView)?.getChildAt(0)?.let {
+            ResponsiveLayout.constrainToReadableWidth(it)
+        }
+        ResponsiveLayout.ensureTouchTarget(
+            binding.profileBTNSettings,
+            binding.profileBTNMore,
+            binding.profileBTNMessage,
+            binding.profileBTNFollow
+        )
         binding.profileBTNEdit.setOnClickListener {
-            setEditMode(true)
+            (requireActivity() as MainActivity).openEditProfile()
         }
         binding.profileBTNSettings.setOnClickListener {
             (requireActivity() as MainActivity).openSettings()
@@ -115,6 +128,7 @@ class ProfileFragment : Fragment() {
         binding.profileBTNMyEvents.setOnClickListener {
             (requireActivity() as MainActivity).openMyEvents()
         }
+        binding.profileBTNCreateContent.visibility = View.GONE
         binding.profileBTNMessage.setOnClickListener {
             startConversation()
         }
@@ -126,6 +140,9 @@ class ProfileFragment : Fragment() {
         }
         binding.profileBTNBlock.setOnClickListener {
             toggleBlock()
+        }
+        binding.profileBTNMore.setOnClickListener {
+            showPublicProfileMenu()
         }
         binding.profileBTNFollowers.setOnClickListener {
             openFollowers()
@@ -207,9 +224,9 @@ class ProfileFragment : Fragment() {
             line("Teachers", user.teachersLearnedFrom.joinToString(", ")),
             line("Performances", user.performancesCompetitions.joinToString(", ")),
             line("Availability", user.availability),
-            line("Instagram", user.instagramUrl),
-            line("TikTok", user.tiktokUrl),
-            line("YouTube", user.youtubeUrl)
+            line("Instagram", if (user.instagramUrl.isNotBlank()) "Available" else ""),
+            line("TikTok", if (user.tiktokUrl.isNotBlank()) "Available" else ""),
+            line("YouTube", if (user.youtubeUrl.isNotBlank()) "Available" else "")
         ).joinToString("\n")
         binding.profileLAYSections.visibility = if (
             binding.profileLBLDetails.text.isBlank() && user.skills.isEmpty()
@@ -227,23 +244,81 @@ class ProfileFragment : Fragment() {
         loadFollowCounts()
     }
 
+    override fun onResume() {
+        super.onResume()
+        refreshProfileHeaderAfterEditIfNeeded()
+    }
+
+    private fun refreshProfileHeaderAfterEditIfNeeded() {
+        if (_binding == null || !isOwnProfile || profileUid.isBlank()) return
+        val prefs = requireContext().getSharedPreferences(EditProfileFragment.PROFILE_EDIT_PREFS, android.content.Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(EditProfileFragment.PROFILE_EDIT_UPDATED, false)) return
+        prefs.edit().remove(EditProfileFragment.PROFILE_EDIT_UPDATED).apply()
+        userRepository.getUserByUid(
+            uid = profileUid,
+            onSuccess = { user ->
+                if (_binding == null) return@getUserByUid
+                currentUser = user
+                renderProfile(user)
+                populateEditFields(user)
+            },
+            onFailure = {}
+        )
+    }
+
     private fun renderProfileActions() {
         binding.profileBTNSettings.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
-        binding.profileBTNEdit.visibility = if (isOwnProfile) binding.profileBTNEdit.visibility else View.GONE
+        binding.profileBTNEdit.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
         binding.profileBTNSavedItems.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
         binding.profileBTNMyEvents.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        binding.profileBTNCreateContent.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        binding.profileBTNCreateContent.visibility = View.GONE
         binding.profileBTNMessage.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
         binding.profileBTNFollow.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
-        binding.profileBTNReport.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
-        binding.profileBTNBlock.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
+        binding.profileLAYPublicActions.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
+        binding.profileBTNMore.visibility = if (isOwnProfile) View.GONE else View.VISIBLE
+        binding.profileBTNReport.visibility = View.GONE
+        binding.profileBTNBlock.visibility = View.GONE
         binding.profileLAYEdit.visibility = if (isOwnProfile) binding.profileLAYEdit.visibility else View.GONE
-        binding.profileBTNCreatePost.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        binding.profileLAYComposer.visibility = View.GONE
+        binding.profileBTNCreatePost.visibility = View.GONE
         binding.profileEDTPostText.isEnabled = isOwnProfile
-        binding.profileEDTPostText.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
         if (!isOwnProfile) {
             loadFollowState()
             loadBlockState()
         }
+    }
+
+    private fun showPublicProfileMenu() {
+        val anchor = binding.profileBTNMore
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add(getString(R.string.share))
+            menu.add(getString(R.string.profile_report))
+            menu.add(binding.profileBTNBlock.text.toString())
+            setOnMenuItemClickListener { item ->
+                when (item.title.toString()) {
+                    getString(R.string.share) -> shareProfile()
+                    getString(R.string.profile_report) -> reportProfile()
+                    else -> toggleBlock()
+                }
+                true
+            }
+            show()
+        }
+    }
+
+    private fun shareProfile() {
+        val user = currentUser ?: return
+        val name = "${user.firstName} ${user.lastName}".trim().ifBlank { "THE FLOW profile" }
+        startActivity(
+            android.content.Intent.createChooser(
+                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, name)
+                },
+                getString(R.string.share)
+            )
+        )
     }
 
     // Loads whether the signed-in viewer follows the profile being displayed.
@@ -356,7 +431,7 @@ class ProfileFragment : Fragment() {
                 binding.profileBTNFollow.isEnabled = true
                 Toast.makeText(
                     requireContext(),
-                    error.ifBlank { getString(R.string.profile_follow_error) },
+                    UiText.friendlyError(error, getString(R.string.profile_follow_error)),
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -380,7 +455,7 @@ class ProfileFragment : Fragment() {
             onFailure = { error ->
                 if (_binding == null) return@toggleBlockUser
                 binding.profileBTNBlock.isEnabled = true
-                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not update this profile action."), Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -403,7 +478,7 @@ class ProfileFragment : Fragment() {
             onFailure = { error ->
                 if (_binding == null) return@resolveOrCreateConversation
                 binding.profileBTNMessage.isEnabled = true
-                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not start this conversation."), Toast.LENGTH_LONG).show()
             }
         )
     }
@@ -791,6 +866,74 @@ class ProfileFragment : Fragment() {
         return "post_${System.currentTimeMillis()}.$extension"
     }
 
+    private fun showEditProfileDialog() {
+        val user = currentUser ?: return
+        populateEditFields(user)
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20.dp(), 18.dp(), 20.dp(), 8.dp())
+        }
+        val bio = editField("Bio", user.bio, minHeight = 104.dp())
+        val background = editField("Professional background", user.professionalBackground, minHeight = 112.dp())
+        val skills = editField("Dance styles and skills", user.skills.joinToString(", "), minHeight = 54.dp())
+        content.addView(TextView(context).apply {
+            text = "Edit public profile"
+            setTextColor(context.getColor(R.color.flow_ink))
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        content.addView(Button(context).apply {
+            text = "Choose profile photo"
+            isAllCaps = false
+            setBackgroundResource(R.drawable.bg_flow_button_secondary)
+            setTextColor(context.getColor(R.color.flow_brand))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 46.dp()).apply { topMargin = 14.dp() }
+            setOnClickListener { profilePhotoPicker.launch("image/*") }
+        })
+        content.addView(Button(context).apply {
+            text = "Choose cover image"
+            isAllCaps = false
+            setBackgroundResource(R.drawable.bg_flow_button_secondary)
+            setTextColor(context.getColor(R.color.flow_brand))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 46.dp()).apply { topMargin = 10.dp() }
+            setOnClickListener { coverImagePicker.launch("image/*") }
+        })
+        content.addView(bio)
+        content.addView(background)
+        content.addView(skills)
+        AlertDialog.Builder(context)
+            .setView(content)
+            .setNegativeButton(R.string.action_cancel) { _, _ ->
+                pendingProfilePhotoUri = null
+                pendingCoverImageUri = null
+            }
+            .setPositiveButton(R.string.post_comment_save) { _, _ ->
+                binding.profileEDTBio.setText(bio.text.toString())
+                binding.profileEDTBackground.setText(background.text.toString())
+                binding.profileEDTSkills.setText(skills.text.toString())
+                saveProfile()
+            }
+            .show()
+    }
+
+    private fun editField(hintText: String, value: String, minHeight: Int): EditText {
+        return EditText(requireContext()).apply {
+            hint = hintText
+            setText(value)
+            setTextColor(context.getColor(R.color.flow_ink))
+            setHintTextColor(context.getColor(R.color.flow_text_muted))
+            setBackgroundResource(R.drawable.bg_flow_input)
+            minLines = 1
+            this.minHeight = minHeight
+            gravity = android.view.Gravity.TOP
+            setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = 10.dp()
+            }
+        }
+    }
+
     // Validates selected upload files before they reach Firebase Storage.
     private fun validateUpload(uri: Uri, kind: UploadKind): String? {
         val mimeType = requireContext().contentResolver.getType(uri).orEmpty()
@@ -865,6 +1008,20 @@ class ProfileFragment : Fragment() {
 
     // Loads viewer-specific engagement state for one profile post before rendering it.
     private fun loadProfilePostEngagementState(post: Post, comments: List<PostComment>) {
+        postRepository.loadLikeCount(
+            postId = post.postId,
+            onSuccess = { likeCount ->
+                if (_binding == null) return@loadLikeCount
+                loadProfilePostEngagementStateWithCount(post.copy(likesCount = likeCount), comments)
+            },
+            onFailure = {
+                if (_binding == null) return@loadLikeCount
+                loadProfilePostEngagementStateWithCount(post, comments)
+            }
+        )
+    }
+
+    private fun loadProfilePostEngagementStateWithCount(post: Post, comments: List<PostComment>) {
         postRepository.isPostLikedByCurrentUser(
             postId = post.postId,
             onSuccess = { isLiked ->
@@ -931,6 +1088,7 @@ class ProfileFragment : Fragment() {
                     authorName = opened.authorName,
                     authorType = opened.authorType
                 )
+                (requireActivity() as MainActivity).openPost(opened.postId)
             },
             onLike = { targetPost -> toggleLike(targetPost) },
             onSave = { targetPost -> toggleSave(targetPost) },
@@ -963,7 +1121,7 @@ class ProfileFragment : Fragment() {
                 profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
             },
             onFailure = { error ->
-                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not load this profile."), Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -972,7 +1130,20 @@ class ProfileFragment : Fragment() {
     private fun addCommentReply(comment: PostComment, text: String) {
         val user = viewerUser
         if (user == null) {
-            Toast.makeText(requireContext(), "User is not loaded yet", Toast.LENGTH_SHORT).show()
+            loadViewerUserThen { loadedUser ->
+                postRepository.addCommentReply(
+                    postId = comment.postId,
+                    commentId = comment.commentId,
+                    author = loadedUser,
+                    text = text,
+                    onSuccess = {
+                        profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
+                    },
+                    onFailure = { error ->
+                        Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
             return
         }
         postRepository.addCommentReply(
@@ -1129,7 +1300,19 @@ class ProfileFragment : Fragment() {
     private fun addComment(post: Post, text: String) {
         val user = viewerUser
         if (user == null) {
-            Toast.makeText(requireContext(), "User is not loaded yet", Toast.LENGTH_SHORT).show()
+            loadViewerUserThen { loadedUser ->
+                postRepository.addComment(
+                    postId = post.postId,
+                    author = loadedUser,
+                    text = text,
+                    onSuccess = {
+                        profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
+                    },
+                    onFailure = { error ->
+                        Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
             return
         }
         postRepository.addComment(
@@ -1140,6 +1323,26 @@ class ProfileFragment : Fragment() {
                 profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
             },
             onFailure = { error ->
+                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun loadViewerUserThen(action: (User) -> Unit) {
+        val uid = authRepository.getCurrentUserUid()
+        if (uid == null) {
+            Toast.makeText(requireContext(), "User is not logged in", Toast.LENGTH_SHORT).show()
+            return
+        }
+        userRepository.getUserByUid(
+            uid = uid,
+            onSuccess = { user ->
+                if (_binding == null) return@getUserByUid
+                viewerUser = user
+                action(user)
+            },
+            onFailure = { error ->
+                if (_binding == null) return@getUserByUid
                 Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
             }
         )

@@ -69,6 +69,18 @@ async function writeFirestoreData(db, data) {
   data.posts.forEach((post) => {
     writes.push({ ref: db.collection("posts").doc(post.postId), data: post });
   });
+  data.jobs.forEach((job) => {
+    writes.push({ ref: db.collection("jobs").doc(job.jobId), data: job });
+  });
+  data.jobApplications.forEach((application) => {
+    writes.push({ ref: db.collection("jobApplications").doc(application.applicationId), data: application });
+  });
+  data.savedJobs.forEach((saved) => {
+    writes.push({ ref: db.collection("users").doc(saved.uid).collection("savedJobs").doc(saved.jobId), data: saved.data });
+  });
+  data.notifications.forEach((notification) => {
+    writes.push({ ref: db.collection("users").doc(notification.uid).collection("notifications").doc(notification.notificationId), data: notification.data });
+  });
   data.likes.forEach((like) => {
     writes.push({ ref: db.collection("posts").doc(like.postId).collection("likes").doc(like.uid), data: like.data });
   });
@@ -130,6 +142,8 @@ function printSummary(data, isDryRun) {
   console.log(`Users: ${data.users.length}`);
   console.log(`Studios: ${data.studios.length}`);
   console.log(`Posts: ${data.posts.length}`);
+  console.log(`Jobs: ${data.jobs.length}`);
+  console.log(`Job applications: ${data.jobApplications.length}`);
   console.log(`Likes: ${data.likes.length}`);
   console.log(`Comments: ${data.comments.length}`);
   console.log(`Saved items: ${data.savedItems.length}`);
