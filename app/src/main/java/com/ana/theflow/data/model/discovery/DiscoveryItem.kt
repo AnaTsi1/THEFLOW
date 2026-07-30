@@ -13,5 +13,25 @@ data class DiscoveryItem(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val claimStatus: String = "",
-    val ownerUid: String = ""
-)
+    val ownerUid: String = "",
+    val source: String = SOURCE_INTERNAL,
+    val googlePlaceId: String = "",
+    val address: String = "",
+    val distanceMeters: Double? = null,
+    val rating: Double? = null,
+    val ratingCount: Int? = null,
+    val openNowLabel: String = "",
+    val phoneNumber: String = "",
+    val websiteUrl: String = "",
+    val googleMapsUrl: String = "",
+    val attributionHtml: String = "",
+    val coverImageUrl: String = "",
+    val priceText: String = "",
+    val dateTimeText: String = "",
+    val displayType: String = ""
+) {
+    companion object {
+        const val SOURCE_INTERNAL = "internal"
+        const val SOURCE_GOOGLE = "google"
+    }
+}

@@ -20,6 +20,9 @@ data class Post(
     val activityPrice: String = "",
     val activityLevel: String = "",
     val activityDescription: String = "",
+    val activityCapacity: Long = 0,
+    val registrationsCount: Long = 0,
+    val waitlistCount: Long = 0,
     val collaborationLookingFor: String = "",
     val collaborationStyle: String = "",
     val collaborationLocation: String = "",
@@ -29,7 +32,10 @@ data class Post(
     val createdAt: Timestamp? = null,
     val visibility: String = "public",
     val likesCount: Long = 0,
-    val commentsCount: Long = 0
+    val commentsCount: Long = 0,
+    val originalPostId: String = "",
+    val originalAuthorId: String = "",
+    val originalAuthorName: String = ""
 )
 
 data class PostMediaItem(
@@ -44,6 +50,20 @@ data class PostMediaItem(
 data class PostComment(
     val commentId: String = "",
     val postId: String = "",
+    val authorId: String = "",
+    val authorName: String = "",
+    val authorProfileImageUrl: String = "",
+    val text: String = "",
+    val createdAt: Timestamp? = null,
+    val likesCount: Long = 0,
+    val isLikedByCurrentUser: Boolean = false,
+    val replies: List<PostCommentReply> = emptyList()
+)
+
+data class PostCommentReply(
+    val replyId: String = "",
+    val postId: String = "",
+    val commentId: String = "",
     val authorId: String = "",
     val authorName: String = "",
     val authorProfileImageUrl: String = "",

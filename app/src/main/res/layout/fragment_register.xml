@@ -2,6 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/flow_background"
     android:fillViewport="true">
 
     <LinearLayout
@@ -14,7 +15,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_card_highlight"
+            android:background="@drawable/bg_flow_card"
             android:gravity="center"
             android:orientation="vertical"
             android:padding="24dp">
@@ -25,7 +26,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:text="Create Account"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_ink"
                 android:textSize="28sp"
                 android:textStyle="bold" />
 
@@ -41,9 +42,9 @@
                     android:layout_width="0dp"
                     android:layout_height="48dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_button_primary"
+                    android:background="@drawable/bg_flow_button_primary"
                     android:text="Dancer"
-                    android:textColor="@color/text_primary"
+                    android:textColor="@color/flow_surface"
                     android:textStyle="bold" />
 
                 <Button
@@ -52,9 +53,9 @@
                     android:layout_height="48dp"
                     android:layout_marginStart="10dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_button_secondary"
+                    android:background="@drawable/bg_flow_button_secondary"
                     android:text="Studio Manager"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/flow_brand" />
             </LinearLayout>
 
             <EditText
@@ -62,44 +63,44 @@
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="18dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="First name"
                 android:inputType="textPersonName"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/register_EDT_lastName"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="12dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Last name"
                 android:inputType="textPersonName"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/register_EDT_email"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="12dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Email"
                 android:inputType="textEmailAddress"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/register_EDT_password"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="12dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Password"
                 android:inputType="textPassword"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <TextView
                 android:id="@+id/register_LBL_message"
@@ -107,7 +108,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:gravity="center"
-                android:textColor="@color/error_pink"
+                android:textColor="@color/flow_error"
                 android:visibility="gone" />
 
             <ProgressBar
@@ -122,9 +123,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="20dp"
-                android:background="@drawable/bg_button_primary"
+                android:background="@drawable/bg_flow_button_primary"
                 android:text="Create Account"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_surface"
                 android:textStyle="bold" />
 
             <Button
@@ -132,9 +133,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:layout_marginTop="12dp"
-                android:background="@drawable/bg_button_secondary"
+                android:background="@drawable/bg_flow_button_ghost"
                 android:text="Back"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/flow_text_secondary" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

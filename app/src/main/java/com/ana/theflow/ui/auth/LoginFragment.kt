@@ -92,14 +92,17 @@ class LoginFragment : Fragment() {
         val studioSelected = selectedRole == Constants.UserRole.STUDIO_MANAGER
         val adminSelected = selectedRole == Constants.UserRole.ADMIN
         binding.loginBTNDancer.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+            if (dancerSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
         )
         binding.loginBTNStudioManager.setBackgroundResource(
-            if (studioSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+            if (studioSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
         )
         binding.loginBTNAdmin.setBackgroundResource(
-            if (adminSelected) com.ana.theflow.R.drawable.bg_button_primary else com.ana.theflow.R.drawable.bg_button_secondary
+            if (adminSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
         )
+        binding.loginBTNDancer.setTextColor(requireContext().getColor(if (dancerSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
+        binding.loginBTNStudioManager.setTextColor(requireContext().getColor(if (studioSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
+        binding.loginBTNAdmin.setTextColor(requireContext().getColor(if (adminSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
         binding.loginBTNDancer.setTypeface(null, if (dancerSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         binding.loginBTNStudioManager.setTypeface(null, if (studioSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         binding.loginBTNAdmin.setTypeface(null, if (adminSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)

@@ -2,13 +2,14 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/flow_background"
     android:padding="24dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/bg_card_highlight"
+        android:background="@drawable/bg_flow_card"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="24dp">
@@ -19,7 +20,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="THE FLOW"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_ink"
             android:textSize="34sp"
             android:textStyle="bold" />
 
@@ -30,7 +31,7 @@
             android:layout_marginTop="8dp"
             android:gravity="center"
             android:text="Sign in to your account"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/flow_text_secondary"
             android:textSize="16sp" />
 
         <LinearLayout
@@ -45,9 +46,9 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_button_primary"
+                android:background="@drawable/bg_flow_button_primary"
                 android:text="Dancer"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_surface"
                 android:textStyle="bold" />
 
             <Button
@@ -56,9 +57,9 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="10dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_button_secondary"
+                android:background="@drawable/bg_flow_button_secondary"
                 android:text="Studio Manager"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/flow_brand" />
 
             <Button
                 android:id="@+id/login_BTN_admin"
@@ -66,9 +67,9 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="10dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_button_secondary"
+                android:background="@drawable/bg_flow_button_secondary"
                 android:text="Admin"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/flow_brand" />
         </LinearLayout>
 
         <EditText
@@ -76,22 +77,22 @@
             android:layout_width="match_parent"
             android:layout_height="54dp"
             android:layout_marginTop="18dp"
-            android:background="@drawable/bg_input"
+            android:background="@drawable/bg_flow_input"
             android:hint="Email"
             android:inputType="textEmailAddress"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_muted" />
+            android:textColor="@color/flow_ink"
+            android:textColorHint="@color/flow_text_muted" />
 
         <EditText
             android:id="@+id/login_EDT_password"
             android:layout_width="match_parent"
             android:layout_height="54dp"
             android:layout_marginTop="12dp"
-            android:background="@drawable/bg_input"
+            android:background="@drawable/bg_flow_input"
             android:hint="Password"
             android:inputType="textPassword"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_muted" />
+            android:textColor="@color/flow_ink"
+            android:textColorHint="@color/flow_text_muted" />
 
         <TextView
             android:id="@+id/login_LBL_message"
@@ -99,7 +100,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:gravity="center"
-            android:textColor="@color/error_pink"
+            android:textColor="@color/flow_error"
             android:visibility="gone" />
 
         <ProgressBar
@@ -114,9 +115,9 @@
             android:layout_width="match_parent"
             android:layout_height="54dp"
             android:layout_marginTop="20dp"
-            android:background="@drawable/bg_button_primary"
+            android:background="@drawable/bg_flow_button_primary"
             android:text="Sign In"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_surface"
             android:textStyle="bold" />
 
         <Button
@@ -124,8 +125,8 @@
             android:layout_width="match_parent"
             android:layout_height="54dp"
             android:layout_marginTop="12dp"
-            android:background="@drawable/bg_button_secondary"
+            android:background="@drawable/bg_flow_button_secondary"
             android:text="Create Account"
-            android:textColor="@color/text_primary" />
+            android:textColor="@color/flow_brand" />
     </LinearLayout>
 </FrameLayout>

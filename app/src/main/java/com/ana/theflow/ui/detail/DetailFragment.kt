@@ -1,5 +1,7 @@
 package com.ana.theflow.ui.detail
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -10,11 +12,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
+import com.ana.theflow.R
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.StudioClaimRepository
 import com.ana.theflow.databinding.FragmentDetailBinding
+import com.ana.theflow.ui.common.UiText
 
 class DetailFragment : Fragment() {
 
@@ -44,8 +48,8 @@ class DetailFragment : Fragment() {
         binding.detailLBLTitle.text = selected.title
         binding.detailLBLMeta.text =
             "${selected.studio} / ${selected.teacher}\n${selected.style} / ${selected.level} / ${selected.location}"
-        binding.detailLBLSchedule.text =
-            "Schedule\n${selected.time}\n\nThis detail view is ready for Firestore-backed class and studio data."
+        binding.detailLBLSchedule.text = detailBody(selected)
+        configureExternalActions(selected)
         binding.detailBTNSave.text = if (DiscoveryRepository.isSaved(selected)) "Saved" else "Save"
         binding.detailBTNSave.isEnabled = !DiscoveryRepository.isSaved(selected)
 
@@ -63,7 +67,7 @@ class DetailFragment : Fragment() {
                     if (_binding == null) return@saveItem
                     binding.detailBTNSave.isEnabled = true
                     binding.detailBTNSave.text = "Save"
-                    Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not save this item."), Toast.LENGTH_LONG).show()
                 }
             )
         }
@@ -123,7 +127,7 @@ class DetailFragment : Fragment() {
 
             else -> {
                 binding.detailBTNClaimStudio.isEnabled = true
-                binding.detailBTNClaimStudio.text = "Claim Studio"
+                binding.detailBTNClaimStudio.text = getString(R.string.detail_claim_studio)
                 binding.detailBTNClaimStudio.setOnClickListener { onClaim() }
             }
         }
@@ -197,6 +201,8 @@ class DetailFragment : Fragment() {
         studioClaimRepository.submitClaim(
             studioId = selected.id,
             studioName = selected.studio,
+            googlePlaceId = selected.googlePlaceId,
+            address = selected.address,
             justification = justification,
             verificationDetails = verificationDetails,
             onSuccess = {
@@ -209,9 +215,72 @@ class DetailFragment : Fragment() {
                 if (_binding == null) return@submitClaim
                 binding.detailBTNClaimStudio.isEnabled = true
                 binding.detailBTNClaimStudio.text = "Claim Studio"
-                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not submit this claim."), Toast.LENGTH_LONG).show()
             }
         )
+    }
+
+    private fun configureExternalActions(selected: DiscoveryItem) {
+        val isExternal = selected.source == DiscoveryItem.SOURCE_GOOGLE
+        binding.detailLAYExternalActions.visibility = if (isExternal) View.VISIBLE else View.GONE
+        binding.detailLBLAttribution.visibility = if (isExternal) View.VISIBLE else View.GONE
+        if (!isExternal) return
+
+        binding.detailBTNNavigate.isEnabled = selected.latitude != null && selected.longitude != null
+        binding.detailBTNNavigate.setOnClickListener {
+            val lat = selected.latitude ?: return@setOnClickListener
+            val lng = selected.longitude ?: return@setOnClickListener
+            openUri("google.navigation:q=$lat,$lng")
+        }
+
+        binding.detailBTNCall.isEnabled = selected.phoneNumber.isNotBlank()
+        binding.detailBTNCall.setOnClickListener {
+            openUri("tel:${selected.phoneNumber}")
+        }
+
+        binding.detailBTNWebsite.isEnabled = selected.websiteUrl.isNotBlank()
+        binding.detailBTNWebsite.setOnClickListener {
+            openUri(selected.websiteUrl)
+        }
+
+        binding.detailBTNMaps.isEnabled = selected.googleMapsUrl.isNotBlank()
+        binding.detailBTNMaps.setOnClickListener {
+            openUri(selected.googleMapsUrl)
+        }
+    }
+
+    private fun detailBody(selected: DiscoveryItem): String {
+        if (selected.source != DiscoveryItem.SOURCE_GOOGLE) {
+            return listOf(
+                selected.time.takeIf { it.isNotBlank() && !it.equals("Schedule pending", ignoreCase = true) }?.let { "Schedule: $it" },
+                selected.address.takeIf { it.isNotBlank() }?.let { "Address: $it" },
+                selected.priceText.takeIf { it.isNotBlank() }?.let { "Price: $it" }
+            ).filterNotNull().joinToString("\n").ifBlank { "Details will appear here when the organizer adds them." }
+        }
+        val ratingText = selected.rating?.let { rating ->
+            val count = selected.ratingCount?.let { " ($it)" }.orEmpty()
+            "Rating: ${"%.1f".format(rating)}$count"
+        }
+        val distanceText = selected.distanceMeters?.let { meters ->
+            if (meters >= 1000) "Distance: ${"%.1f".format(meters / 1000.0)} km" else "Distance: ${meters.toInt()} m"
+        }
+        return listOfNotNull(
+            selected.address.takeIf { it.isNotBlank() }?.let { "Address: $it" },
+            ratingText,
+            distanceText,
+            selected.time.takeIf { it.isNotBlank() }?.let { "Status: $it" },
+            selected.phoneNumber.takeIf { it.isNotBlank() }?.let { "Phone: $it" },
+            selected.websiteUrl.takeIf { it.isNotBlank() }?.let { "Website: $it" },
+            getString(R.string.detail_external_info_missing)
+        ).joinToString("\n")
+    }
+
+    private fun openUri(uri: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+        runCatching { startActivity(intent) }
+            .onFailure {
+                Toast.makeText(requireContext(), "No app can open this action", Toast.LENGTH_SHORT).show()
+            }
     }
 
     // Clears the fragment binding when the view is destroyed.

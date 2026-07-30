@@ -2,6 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/flow_background"
     android:fillViewport="true">
 
     <LinearLayout
@@ -13,13 +14,13 @@
             android:id="@+id/onboarding_BTN_back"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
-            android:background="@drawable/bg_button_secondary"
+            android:background="@drawable/bg_flow_button_secondary"
             android:minWidth="0dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
             android:text="Back"
             android:textAllCaps="false"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_brand"
             android:textStyle="bold"
             android:visibility="gone" />
 
@@ -29,7 +30,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:text="Build Your Dance Profile"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_ink"
             android:textSize="30sp"
             android:textStyle="bold" />
 
@@ -39,14 +40,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="Choose your preferences so THE FLOW can personalize your feed and discovery."
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/flow_text_secondary"
             android:textSize="14sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
-            android:background="@drawable/bg_card_highlight"
+            android:background="@drawable/bg_flow_card"
             android:orientation="vertical"
             android:padding="18dp">
 
@@ -54,23 +55,23 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Dance styles"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_ink"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
-            <CheckBox android:id="@+id/onboarding_CHK_hiphop" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Hip Hop" android:textColor="@color/text_secondary" android:checked="true" />
-            <CheckBox android:id="@+id/onboarding_CHK_heels" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Heels" android:textColor="@color/text_secondary" android:checked="true" />
-            <CheckBox android:id="@+id/onboarding_CHK_salsa" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Salsa" android:textColor="@color/text_secondary" />
-            <CheckBox android:id="@+id/onboarding_CHK_contemporary" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Contemporary" android:textColor="@color/text_secondary" />
-            <CheckBox android:id="@+id/onboarding_CHK_afro" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Afro" android:textColor="@color/text_secondary" />
-            <CheckBox android:id="@+id/onboarding_CHK_ballet" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Ballet" android:textColor="@color/text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_hiphop" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Hip Hop" android:textColor="@color/flow_text_secondary" android:checked="true" />
+            <CheckBox android:id="@+id/onboarding_CHK_heels" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Heels" android:textColor="@color/flow_text_secondary" android:checked="true" />
+            <CheckBox android:id="@+id/onboarding_CHK_salsa" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Salsa" android:textColor="@color/flow_text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_contemporary" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Contemporary" android:textColor="@color/flow_text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_afro" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Afro" android:textColor="@color/flow_text_secondary" />
+            <CheckBox android:id="@+id/onboarding_CHK_ballet" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Ballet" android:textColor="@color/flow_text_secondary" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:text="Level"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_ink"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
@@ -78,9 +79,9 @@
                 android:id="@+id/onboarding_RADIO_level"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
-                <RadioButton android:id="@+id/onboarding_RDB_beginner" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Beginner" android:textColor="@color/text_secondary" />
-                <RadioButton android:id="@+id/onboarding_RDB_intermediate" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Intermediate" android:textColor="@color/text_secondary" android:checked="true" />
-                <RadioButton android:id="@+id/onboarding_RDB_advanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Advanced" android:textColor="@color/text_secondary" />
+                <RadioButton android:id="@+id/onboarding_RDB_beginner" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Beginner" android:textColor="@color/flow_text_secondary" />
+                <RadioButton android:id="@+id/onboarding_RDB_intermediate" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Intermediate" android:textColor="@color/flow_text_secondary" android:checked="true" />
+                <RadioButton android:id="@+id/onboarding_RDB_advanced" android:layout_width="match_parent" android:layout_height="@dimen/flow_touch_size" android:text="Advanced" android:textColor="@color/flow_text_secondary" />
             </RadioGroup>
 
             <AutoCompleteTextView
@@ -88,20 +89,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="14dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:focusable="true"
                 android:hint="City"
                 android:inputType="none"
                 android:text="Tel Aviv"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:text="Optional preferences"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_ink"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
@@ -110,39 +111,39 @@
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Preferred studios, comma separated"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/onboarding_EDT_preferredTeachers"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Preferred teachers, comma separated"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/onboarding_EDT_preferredDancers"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Preferred dancers, comma separated"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <Button
                 android:id="@+id/onboarding_BTN_continue"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="20dp"
-                android:background="@drawable/bg_button_primary"
+                android:background="@drawable/bg_flow_button_primary"
                 android:text="Start Discovering"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_surface"
                 android:textStyle="bold" />
 
         </LinearLayout>
