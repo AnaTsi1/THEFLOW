@@ -137,7 +137,8 @@ class SavedItemsFragment : Fragment() {
             },
             onAuthorOpen = { authorId ->
                 (requireActivity() as MainActivity).openUserProfile(authorId)
-            }
+            },
+            onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) }
         )
     }
 

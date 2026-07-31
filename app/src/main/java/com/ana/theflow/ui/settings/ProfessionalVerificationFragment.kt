@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import com.ana.theflow.MainActivity
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.ProfessionalApplicationRepository
 import com.ana.theflow.databinding.FragmentProfessionalVerificationBinding
@@ -36,7 +37,7 @@ class ProfessionalVerificationFragment : Fragment() {
             submit(Constants.ProfessionalApplicationType.CHOREOGRAPHER)
         }
         binding.verificationBTNStudio.setOnClickListener {
-            submit(Constants.ProfessionalApplicationType.STUDIO)
+            (requireActivity() as MainActivity).openStudioRequest(mode = "create")
         }
     }
 

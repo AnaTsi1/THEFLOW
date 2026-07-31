@@ -53,6 +53,28 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/home_LAY_account"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:background="@drawable/bg_flow_icon_button"
+            android:gravity="center_vertical"
+            android:paddingStart="10dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/home_LBL_account"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/home_posting_as_personal"
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/home_LAY_tabs"
             android:layout_width="match_parent"
             android:layout_height="42dp"
@@ -183,6 +205,16 @@
             android:textStyle="bold" />
 
         <LinearLayout
+            android:id="@+id/home_MENU_switchAccount"
+            style="@style/Flow.Drawer.Row">
+            <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_profile_24" />
+            <TextView
+                android:id="@+id/home_LBL_menuAccount"
+                style="@style/Flow.Drawer.Label"
+                android:text="@string/home_switch_account" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/home_MENU_events"
             style="@style/Flow.Drawer.Row">
             <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_event_24" />
@@ -201,20 +233,6 @@
             style="@style/Flow.Drawer.Row">
             <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_bookmark_24" />
             <TextView style="@style/Flow.Drawer.Label" android:text="@string/home_menu_saved" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/home_MENU_messages"
-            style="@style/Flow.Drawer.Row">
-            <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_chat_24" />
-            <TextView style="@style/Flow.Drawer.Label" android:text="@string/home_menu_messages" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/home_MENU_notifications"
-            style="@style/Flow.Drawer.Row">
-            <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_notifications_24" />
-            <TextView style="@style/Flow.Drawer.Label" android:text="@string/home_menu_notifications" />
         </LinearLayout>
 
         <LinearLayout

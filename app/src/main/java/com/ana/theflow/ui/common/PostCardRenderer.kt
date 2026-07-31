@@ -19,8 +19,13 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import com.ana.theflow.R
+import com.ana.theflow.data.model.post.AuthorRef
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
+import com.ana.theflow.data.model.post.authorRef
+import com.ana.theflow.data.model.post.isStudioAuthored
+import com.ana.theflow.data.model.post.originalAuthorRef
+import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.bumptech.glide.Glide
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,6 +68,9 @@ object PostCardRenderer {
         onDelete: ((Post) -> Unit)? = null,
         onMediaOpen: ((String, String) -> Unit)? = null,
         onAuthorOpen: ((String) -> Unit)? = null,
+        // Routes the post's own header tap by account type (user vs. studio). Falls back to
+        // onAuthorOpen(post.authorId) when not supplied, so existing callers keep working.
+        onAuthorEntityOpen: ((AuthorRef) -> Unit)? = null,
         cardStyle: CardStyle = CardStyle.DARK
     ) {
         val context = parent.context
@@ -86,12 +94,15 @@ object PostCardRenderer {
             }
         }
 
-        addHeader(card, post, canEdit, onAuthorOpen, onReport, onHide, onEdit, onDelete, cardStyle)
+        addHeader(card, post, canEdit, onAuthorOpen, onAuthorEntityOpen, onReport, onHide, onEdit, onDelete, cardStyle)
         if (post.originalPostId.isNotBlank()) {
             addRepostAttribution(card, post, cardStyle)
         }
         if (post.postType == POST_TYPE_DANCE_ACTIVITY) {
             addEventContent(card, post, isEventRegistered, onEventRegister, onOpen, onMediaOpen, cardStyle)
+        } else if (post.postType == POST_TYPE_REPOST && post.activityType.isNotBlank()) {
+            addBodyText(card, post.text, cardStyle)
+            addSharedEventContent(card, post, onOpen, cardStyle)
         } else {
             addBodyText(card, post.text, cardStyle)
             addPostMedia(card, post, onMediaOpen, cardStyle)
@@ -141,7 +152,7 @@ object PostCardRenderer {
     private fun addRepostAttribution(card: LinearLayout, post: Post, cardStyle: CardStyle) {
         val context = card.context
         card.addView(TextView(context).apply {
-            text = "Repost of ${post.originalAuthorName.ifBlank { "a post" }}"
+            text = "Repost of ${post.originalAuthorRef().name.ifBlank { "a post" }}"
             setTextColor(context.getColor(brandColor(cardStyle)))
             textSize = 12f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -154,6 +165,7 @@ object PostCardRenderer {
         post: Post,
         canEdit: Boolean,
         onAuthorOpen: ((String) -> Unit)?,
+        onAuthorEntityOpen: ((AuthorRef) -> Unit)?,
         onReport: ((Post) -> Unit)?,
         onHide: ((Post) -> Unit)?,
         onEdit: ((Post) -> Unit)?,
@@ -161,28 +173,35 @@ object PostCardRenderer {
         cardStyle: CardStyle
     ) {
         val context = card.context
+        val authorRef = post.authorRef()
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        val canOpenAuthor = (onAuthorEntityOpen != null && authorRef.id.isNotBlank()) ||
+            (onAuthorOpen != null && post.authorId.isNotBlank())
         val openAuthor = View.OnClickListener {
             subtleTap(it)
-            if (post.authorId.isNotBlank()) onAuthorOpen?.invoke(post.authorId)
+            if (onAuthorEntityOpen != null && authorRef.id.isNotBlank()) {
+                onAuthorEntityOpen.invoke(authorRef)
+            } else if (post.authorId.isNotBlank()) {
+                onAuthorOpen?.invoke(post.authorId)
+            }
         }
 
         row.addView(ImageView(context).apply {
             setBackgroundResource(R.drawable.bg_avatar)
             scaleType = ImageView.ScaleType.CENTER_CROP
             contentDescription = context.getString(R.string.post_author_photo)
-            isClickable = post.authorId.isNotBlank() && onAuthorOpen != null
+            isClickable = canOpenAuthor
             isFocusable = isClickable
             setOnClickListener(openAuthor)
             layoutParams = LinearLayout.LayoutParams(42.dp(), 42.dp()).apply {
                 rightMargin = 10.dp()
             }
-            if (post.authorProfileImageUrl.isNotBlank()) {
-                Glide.with(context).load(post.authorProfileImageUrl).circleCrop().into(this)
+            if (authorRef.imageUrl.isNotBlank()) {
+                Glide.with(context).load(authorRef.imageUrl).circleCrop().into(this)
             }
         })
 
@@ -191,19 +210,20 @@ object PostCardRenderer {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 
             addView(TextView(context).apply {
-                text = post.authorName.ifBlank { context.getString(R.string.post_fallback_author) }
+                text = authorRef.name.ifBlank { context.getString(R.string.post_fallback_author) }
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setTextColor(context.getColor(primaryTextColor(cardStyle)))
                 textSize = 15f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
-                isClickable = post.authorId.isNotBlank() && onAuthorOpen != null
+                isClickable = canOpenAuthor
                 isFocusable = isClickable
                 setOnClickListener(openAuthor)
             })
 
             addView(TextView(context).apply {
-                text = "${post.authorType.ifBlank { "dancer" }} / ${formatTimestamp(post)}"
+                val subtitlePrefix = if (post.isStudioAuthored()) "Business account" else post.authorType.ifBlank { "dancer" }
+                text = "$subtitlePrefix / ${formatTimestamp(post)}"
                 setTextColor(context.getColor(secondaryTextColor(cardStyle)))
                 textSize = 12f
                 setPadding(0, 2.dp(), 0, 0)
@@ -309,7 +329,7 @@ object PostCardRenderer {
             })
 
             addView(TextView(context).apply {
-                text = post.authorName.takeIf { it.isNotBlank() }?.let { "Organized by $it" }.orEmpty()
+                text = post.authorRef().name.takeIf { it.isNotBlank() }?.let { "Organized by $it" }.orEmpty()
                 setTextColor(context.getColor(secondaryTextColor(cardStyle)))
                 textSize = 13f
                 setPadding(0, 5.dp(), 0, 0)
@@ -327,35 +347,126 @@ object PostCardRenderer {
             addBodyText(this, post.activityDescription.ifBlank { post.text }, cardStyle)
 
             if (onOpen != null || onEventRegister != null) {
-                addView(Button(context).apply {
-                    val opensDetails = onOpen != null
-                    text = if (opensDetails) context.getString(R.string.post_view_details) else eventActionLabel(context, post, isEventRegistered)
-                    isAllCaps = false
-                    setTextColor(context.getColor(if (!opensDetails && isEventRegistered && cardStyle == CardStyle.FLOW_LIGHT) R.color.flow_brand else primaryTextColor(cardStyle)))
-                    setBackgroundResource(
-                        if (cardStyle == CardStyle.FLOW_LIGHT) {
-                            if (!opensDetails && isEventRegistered) R.drawable.bg_flow_button_secondary else R.drawable.bg_flow_button_primary
-                        } else {
-                            if (!opensDetails && isEventRegistered) R.drawable.bg_button_secondary else R.drawable.bg_button_lilac
-                        }
-                    )
-                    minHeight = 0
-                    minWidth = 0
-                    setPadding(16.dp(), 8.dp(), 16.dp(), 8.dp())
-                    isEnabled = opensDetails || !isEventFull(post) || isEventRegistered
-                    alpha = if (isEnabled) 1f else 0.58f
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
                     layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        38.dp()
-                    ).apply {
-                        topMargin = 10.dp()
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = 10.dp() }
+                    if (onOpen != null) {
+                        addView(eventButton(context.getString(R.string.post_view_details), primary = true, cardStyle = cardStyle) {
+                            onOpen.invoke(post)
+                        })
                     }
-                    setOnClickListener {
-                        subtleTap(this)
-                        if (opensDetails) onOpen?.invoke(post) else onEventRegister?.invoke(post)
+                    if (onEventRegister != null) {
+                        addView(eventButton(eventActionLabel(context, post, isEventRegistered), primary = !isEventRegistered, cardStyle = cardStyle) {
+                            onEventRegister.invoke(post)
+                        }.apply {
+                            isEnabled = !isEventFull(post) || isEventRegistered
+                            alpha = if (isEnabled) 1f else 0.58f
+                            if (onOpen != null) {
+                                (layoutParams as LinearLayout.LayoutParams).leftMargin = 8.dp()
+                            }
+                        })
                     }
                 })
             }
+        })
+    }
+
+    private fun LinearLayout.eventButton(
+        textValue: String,
+        primary: Boolean,
+        cardStyle: CardStyle,
+        onClick: () -> Unit
+    ): Button {
+        val context = this.context
+        return Button(context).apply {
+            text = textValue
+            isAllCaps = false
+            setTextColor(context.getColor(if (primary) R.color.white else brandColor(cardStyle)))
+            setBackgroundResource(
+                if (primary) {
+                    if (cardStyle == CardStyle.FLOW_LIGHT) R.drawable.bg_flow_button_primary else R.drawable.bg_button_lilac
+                } else {
+                    if (cardStyle == CardStyle.FLOW_LIGHT) R.drawable.bg_flow_button_secondary else R.drawable.bg_button_secondary
+                }
+            )
+            minHeight = 0
+            minWidth = 0
+            setPadding(14.dp(), 8.dp(), 14.dp(), 8.dp())
+            layoutParams = LinearLayout.LayoutParams(0, 38.dp(), 1f)
+            setOnClickListener {
+                subtleTap(this)
+                onClick()
+            }
+        }
+    }
+
+    private fun addSharedEventContent(
+        card: LinearLayout,
+        post: Post,
+        onOpen: ((Post) -> Unit)?,
+        cardStyle: CardStyle
+    ) {
+        val context = card.context
+        card.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(eventBackground(cardStyle))
+            setPadding(12.dp(), 12.dp(), 12.dp(), 12.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 10.dp()
+            }
+
+            addView(TextView(context).apply {
+                text = post.activityType
+                setTextColor(context.getColor(primaryTextColor(cardStyle)))
+                textSize = 18f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+
+            addView(TextView(context).apply {
+                text = listOf(post.activityDate, post.activityTime, post.activityLocation)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" / ")
+                setTextColor(context.getColor(secondaryTextColor(cardStyle)))
+                textSize = 13f
+                setPadding(0, 6.dp(), 0, 0)
+            })
+
+            addView(TextView(context).apply {
+                text = "Organized by ${post.originalAuthorRef().name.ifBlank { post.authorRef().name }}"
+                setTextColor(context.getColor(secondaryTextColor(cardStyle)))
+                textSize = 13f
+                setPadding(0, 5.dp(), 0, 0)
+            })
+
+            addBodyText(this, post.activityDescription, cardStyle)
+
+            addView(Button(context).apply {
+                text = context.getString(R.string.post_view_details)
+                isAllCaps = false
+                setTextColor(context.getColor(R.color.white))
+                setBackgroundResource(
+                    if (cardStyle == CardStyle.FLOW_LIGHT) R.drawable.bg_flow_button_primary else R.drawable.bg_button_lilac
+                )
+                minHeight = 0
+                minWidth = 0
+                setPadding(16.dp(), 8.dp(), 16.dp(), 8.dp())
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    38.dp()
+                ).apply {
+                    topMargin = 10.dp()
+                }
+                setOnClickListener {
+                    subtleTap(this)
+                    onOpen?.invoke(post)
+                }
+            })
         })
     }
 
@@ -1049,6 +1160,7 @@ object PostCardRenderer {
             putExtra(Intent.EXTRA_TEXT, text)
         }
         context.startActivity(Intent.createChooser(intent, context.getString(R.string.post_share)))
+        ActivityTrackingRepository().trackPostShared(post)
     }
 
     private fun detailLine(label: String, value: String): String? {

@@ -5,7 +5,6 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.UserRepository
-import com.ana.theflow.utilities.Constants
 import com.ana.theflow.utilities.ValidationUtils
 
 class AuthViewModel : ViewModel() {
@@ -16,11 +15,11 @@ class AuthViewModel : ViewModel() {
     private val _uiState = MutableLiveData(AuthUiState())
     val uiState: LiveData<AuthUiState> get() = _uiState
 
-    // Signs in a user with email and password.
+    // Signs in a user with email and password. There is no role selector - permissions are
+    // additive and derived from the stored account, never chosen at login.
     fun login(
         email: String,
         password: String,
-        selectedRole: Constants.UserRole,
         onSuccess: () -> Unit
     ) {
         if (!validateLogin(email, password)) return
@@ -31,10 +30,8 @@ class AuthViewModel : ViewModel() {
             email = email,
             password = password,
             onSuccess = {
-                validateSignedInRole(
-                    selectedRole = selectedRole,
-                    onSuccess = onSuccess
-                )
+                _uiState.value = AuthUiState()
+                onSuccess()
             },
             onFailure = { error ->
                 _uiState.value = AuthUiState(errorMessage = error)
@@ -42,13 +39,13 @@ class AuthViewModel : ViewModel() {
         )
     }
 
-    // Creates a new user account.
+    // Creates a new user account. Every new account is simply a regular dancer - professional
+    // and studio-manager permissions are always granted later by an admin.
     fun register(
         firstName: String,
         lastName: String,
         email: String,
         password: String,
-        role: Constants.UserRole,
         onSuccess: () -> Unit
     ) {
         if (!validateRegister(firstName, lastName, email, password)) return
@@ -63,7 +60,6 @@ class AuthViewModel : ViewModel() {
                     firstName = firstName,
                     lastName = lastName,
                     email = email,
-                    role = role,
                     onSuccess = onSuccess
                 )
             },
@@ -108,50 +104,17 @@ class AuthViewModel : ViewModel() {
         _uiState.value = _uiState.value?.copy(errorMessage = null) ?: AuthUiState()
     }
 
-    // Checks that the signed-in user matches the selected role.
-    private fun validateSignedInRole(
-        selectedRole: Constants.UserRole,
-        onSuccess: () -> Unit
-    ) {
-        val uid = authRepository.getCurrentUserUid()
-        if (uid == null) {
-            _uiState.value = AuthUiState(errorMessage = "User is not logged in")
-            return
-        }
-
-        userRepository.getUserByUid(
-            uid = uid,
-            onSuccess = { user ->
-                if (user.role.matchesRole(selectedRole)) {
-                    _uiState.value = AuthUiState()
-                    onSuccess()
-                } else {
-                    authRepository.logout()
-                    _uiState.value = AuthUiState(
-                        errorMessage = "This account is registered as ${user.role.toRoleLabel()}"
-                    )
-                }
-            },
-            onFailure = { error ->
-                authRepository.logout()
-                _uiState.value = AuthUiState(errorMessage = error)
-            }
-        )
-    }
-
     // Creates a Firestore profile for a new user.
     private fun createUserProfile(
         firstName: String,
         lastName: String,
         email: String,
-        role: Constants.UserRole,
         onSuccess: () -> Unit
     ) {
         userRepository.createUserProfile(
             firstName = firstName,
             lastName = lastName,
             email = email,
-            role = role,
             onSuccess = {
                 _uiState.value = AuthUiState()
                 onSuccess()
@@ -204,21 +167,6 @@ class AuthViewModel : ViewModel() {
             }
 
             else -> true
-        }
-    }
-
-    // Checks whether a stored role matches a role option.
-    private fun String.matchesRole(role: Constants.UserRole): Boolean {
-        return equals(role.name, ignoreCase = true) ||
-            equals(role.firestoreValue, ignoreCase = true)
-    }
-
-    // Converts a role value into display text.
-    private fun String.toRoleLabel(): String {
-        return when {
-            matchesRole(Constants.UserRole.STUDIO_MANAGER) -> "Studio Manager"
-            matchesRole(Constants.UserRole.ADMIN) -> "Admin"
-            else -> "Dancer"
         }
     }
 }

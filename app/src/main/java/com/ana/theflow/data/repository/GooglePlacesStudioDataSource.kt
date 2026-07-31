@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Location
 import com.ana.theflow.BuildConfig
 import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.utilities.CityOptions
 import com.ana.theflow.utilities.StudioDiscoveryUtils
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.maps.model.LatLng
@@ -68,7 +69,7 @@ class GooglePlacesStudioDataSource(
                 .addOnSuccessListener { response ->
                     if (completed) return@addOnSuccessListener
                     response.places
-                        .mapNotNull { place -> place.toDiscoveryItem(city, location) }
+                        .mapNotNull { place -> place.toDiscoveryItem(location) }
                         .filter { StudioDiscoveryUtils.isRelevantDanceStudio(it) }
                         .forEach { item ->
                             collected.putIfAbsent(item.googlePlaceId, item)
@@ -93,30 +94,6 @@ class GooglePlacesStudioDataSource(
         }
     }
 
-    private fun buildQueries(query: String, city: String): List<String> {
-        val locationSuffix = city.trim().ifBlank { "near me" }
-        val baseTerms = listOf(
-            "dance studio",
-            "dance school",
-            "dancing school",
-            "ballet school",
-            "hip-hop studio",
-            "dance academy",
-            "סטודיו לריקוד",
-            "בית ספר לריקוד",
-            "סטודיו למחול",
-            "סטודיו לריקוד",
-            "בית ספר לריקוד",
-            "סטודיו למחול"
-        )
-        val cleanedQuery = query.trim()
-        val searchTerms = if (cleanedQuery.isBlank()) baseTerms else listOf(cleanedQuery) + baseTerms
-        return searchTerms
-            .map { "$it $locationSuffix" }
-            .distinct()
-            .take(MAX_QUERY_COUNT)
-    }
-
     private fun placeFields(): List<Place.Field> {
         return listOf(
             Place.Field.ID,
@@ -133,11 +110,13 @@ class GooglePlacesStudioDataSource(
         )
     }
 
-    private fun Place.toDiscoveryItem(city: String, userLocation: Location?): DiscoveryItem? {
+    private fun Place.toDiscoveryItem(userLocation: Location?): DiscoveryItem? {
         val placeId = id.orEmpty()
         val name = displayName.orEmpty()
         if (placeId.isBlank() || name.isBlank()) return null
         val placeLocation = location
+        val address = formattedAddress.orEmpty()
+        val inferredCity = inferCityFromAddress(address)
         val distance = if (userLocation != null && placeLocation != null) {
             FloatArray(1).also { result ->
                 Location.distanceBetween(
@@ -159,14 +138,14 @@ class GooglePlacesStudioDataSource(
             teacher = "Google Places",
             style = "Dance",
             level = "All levels",
-            location = city.ifBlank { formattedAddress.orEmpty() },
+            location = inferredCity,
             time = businessStatus?.name?.replace('_', ' ') ?: "Check availability",
             type = "Studio",
             latitude = placeLocation?.latitude,
             longitude = placeLocation?.longitude,
             source = DiscoveryItem.SOURCE_GOOGLE,
             googlePlaceId = placeId,
-            address = formattedAddress.orEmpty(),
+            address = address,
             distanceMeters = distance,
             rating = rating,
             ratingCount = userRatingCount,
@@ -178,27 +157,12 @@ class GooglePlacesStudioDataSource(
         )
     }
 
-    private fun DiscoveryItem.isRelevantDanceStudio(): Boolean {
-        val haystack = listOf(title, studio, address, type)
-            .joinToString(" ")
-            .lowercase()
-        val negativeTerms = listOf("restaurant", "bar", "night club", "club", "clothing", "shoes")
-        if (negativeTerms.any { it in haystack }) return false
-        val positiveTerms = listOf(
-            "dance",
-            "dancing",
-            "ballet",
-            "hip",
-            "studio",
-            "school",
-            "academy",
-            "מחול",
-            "ריקוד",
-            "ריקודים",
-            "סטודיו"
-        )
-        if (positiveTerms.any { it in haystack }) return true
-        return listOf("dance", "dancing", "ballet", "hip", "מחול", "ריקוד").any { it in haystack }
+    private fun inferCityFromAddress(address: String): String {
+        if (address.isBlank()) return ""
+        return CityOptions.cityOptions.firstOrNull { city ->
+            address.contains(city.displayName, ignoreCase = true) ||
+                city.aliases.any { alias -> address.contains(alias, ignoreCase = true) }
+        }?.displayName.orEmpty()
     }
 
     private fun userMessageFor(error: Exception): String {
@@ -212,7 +176,6 @@ class GooglePlacesStudioDataSource(
     }
 
     companion object {
-        private const val MAX_QUERY_COUNT = 8
         private const val SEARCH_RADIUS_METERS = 30000.0
     }
 }

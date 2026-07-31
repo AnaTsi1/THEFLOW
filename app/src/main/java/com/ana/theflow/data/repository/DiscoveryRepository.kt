@@ -2,8 +2,19 @@ package com.ana.theflow.data.repository
 
 import android.content.Context
 import android.location.Location
+import android.util.Log
+import com.ana.theflow.BuildConfig
 import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.data.recommendation.DiscoverRankingStrategy
+import com.ana.theflow.data.recommendation.GeoPoint
+import com.ana.theflow.data.recommendation.LocationSourceResolver
+import com.ana.theflow.data.recommendation.RecommendationContext
+import com.ana.theflow.data.recommendation.RecommendationNormalizer
+import com.ana.theflow.data.recommendation.RecommendationProfile
+import com.ana.theflow.data.recommendation.RecommendationScoreExplanation
+import com.ana.theflow.data.recommendation.RecommendationSurface
 import com.ana.theflow.utilities.Constants
+import com.ana.theflow.utilities.CityOptions
 import com.ana.theflow.utilities.StudioDiscoveryUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -19,17 +30,43 @@ object DiscoveryRepository {
     private var firebaseItems: List<DiscoveryItem> = emptyList()
     private var activityItems: List<DiscoveryItem> = emptyList()
     private var externalItems: List<DiscoveryItem> = emptyList()
+    private val externalItemsByCacheKey = mutableMapOf<String, List<DiscoveryItem>>()
+    private var activeExternalCacheKey: String = "default"
     private var externalStatusMessage: String = ""
+    private var scopedUserId: String = ""
 
     var preferredStyles: MutableSet<String> = mutableSetOf()
     var preferredLevel: String = ""
     var preferredLocation: String = ""
 
-    private val styleScores = mutableMapOf<String, Int>()
-    private val studioScores = mutableMapOf<String, Int>()
-    private val teacherScores = mutableMapOf<String, Int>()
+    private val styleScores = mutableMapOf<String, Double>()
+    private val studioScores = mutableMapOf<String, Double>()
+    private val teacherScores = mutableMapOf<String, Double>()
     private val savedItemIds = mutableSetOf<String>()
     private var lastReason = "Based on your dance preferences"
+
+    fun resetForUser(uid: String = auth.currentUser?.uid.orEmpty()) {
+        scopedUserId = uid
+        firebaseItems = emptyList()
+        activityItems = emptyList()
+        externalItems = emptyList()
+        externalItemsByCacheKey.clear()
+        activeExternalCacheKey = "default"
+        externalStatusMessage = ""
+        preferredStyles = mutableSetOf()
+        preferredLevel = ""
+        preferredLocation = ""
+        styleScores.clear()
+        studioScores.clear()
+        teacherScores.clear()
+        savedItemIds.clear()
+        lastReason = "Based on your dance preferences"
+    }
+
+    private fun ensureScope() {
+        val uid = auth.currentUser?.uid.orEmpty()
+        if (scopedUserId != uid) resetForUser(uid)
+    }
 
     // Loads user preferences into discovery recommendations.
     fun hydratePreferences(
@@ -40,25 +77,43 @@ object DiscoveryRepository {
         preferredTeachers: List<String> = emptyList(),
         preferredDancers: List<String> = emptyList()
     ) {
-        if (styles.isNotEmpty()) preferredStyles = styles.toMutableSet()
+        ensureScope()
+        if (styles.isNotEmpty()) preferredStyles = styles.map { RecommendationNormalizer.styleId(it) }.toMutableSet()
         if (level.isNotBlank()) preferredLevel = level
-        if (location.isNotBlank()) preferredLocation = location
-        preferredStyles.forEach { styleScores[it] = (styleScores[it] ?: 0) + 3 }
-        preferredStudios.forEach { studioScores[it] = (studioScores[it] ?: 0) + 3 }
-        preferredTeachers.forEach { teacherScores[it] = (teacherScores[it] ?: 0) + 3 }
-        preferredDancers.forEach { teacherScores[it] = (teacherScores[it] ?: 0) + 3 }
+        CityOptions.normalizeOptionalCity(location)?.let { preferredLocation = it }
+        preferredStyles.forEach { styleScores[it] = maxOf(styleScores[it] ?: 0.0, 3.0) }
+        preferredStudios.forEach { studioScores[RecommendationNormalizer.id(it)] = maxOf(studioScores[RecommendationNormalizer.id(it)] ?: 0.0, 3.0) }
+        preferredTeachers.forEach { teacherScores[RecommendationNormalizer.id(it)] = maxOf(teacherScores[RecommendationNormalizer.id(it)] ?: 0.0, 3.0) }
+        preferredDancers.forEach { teacherScores[RecommendationNormalizer.id(it)] = maxOf(teacherScores[RecommendationNormalizer.id(it)] ?: 0.0, 3.0) }
         lastReason = "Based on your dance profile"
+    }
+
+    fun hydrateProfile(profile: RecommendationProfile) {
+        ensureScope()
+        if (profile.userId.isNotBlank() && scopedUserId != profile.userId) resetForUser(profile.userId)
+        preferredStyles = profile.danceStyles.map { RecommendationNormalizer.styleId(it) }.toMutableSet()
+        preferredLevel = profile.danceLevel
+        preferredLocation = profile.preferredRecommendationArea
+        styleScores.clear()
+        styleScores.putAll(profile.styleScores)
+        studioScores.clear()
+        studioScores.putAll(profile.studioScores)
+        teacherScores.clear()
+        teacherScores.putAll(profile.teacherScores)
+        savedItemIds.addAll(profile.savedItemIds)
+        lastReason = "Based on your recommendation profile"
     }
 
     // Tracks a search action.
     fun trackSearch(style: String, location: String) {
+        ensureScope()
         if (style.isNotBlank()) {
-            styleScores[style] = (styleScores[style] ?: 0) + 2
+            val styleId = RecommendationNormalizer.styleId(style)
+            styleScores[styleId] = (styleScores[styleId] ?: 0.0) + 2.0
             lastReason = "Because you searched for $style"
         }
         if (location.isNotBlank()) {
-            preferredLocation = location
-            lastReason = "Popular near $location"
+            lastReason = "Search location: ${CityOptions.displayNameFor(location)}"
         }
     }
 
@@ -79,9 +134,13 @@ object DiscoveryRepository {
 
     // Tracks that a discovery item was opened and updates recommendations.
     fun trackOpenItem(item: DiscoveryItem) {
-        styleScores[item.style] = (styleScores[item.style] ?: 0) + 2
-        studioScores[item.studio] = (studioScores[item.studio] ?: 0) + 2
-        teacherScores[item.teacher] = (teacherScores[item.teacher] ?: 0) + 1
+        ensureScope()
+        val styleId = RecommendationNormalizer.styleId(item.style)
+        val studioId = RecommendationNormalizer.id(item.studio)
+        val teacherId = RecommendationNormalizer.id(item.teacher)
+        styleScores[styleId] = (styleScores[styleId] ?: 0.0) + 2.0
+        studioScores[studioId] = (studioScores[studioId] ?: 0.0) + 2.0
+        teacherScores[teacherId] = (teacherScores[teacherId] ?: 0.0) + 1.0
         lastReason = "Because you viewed ${item.style} classes"
 
         activityTrackingRepository.trackOpenDiscoveryItem(
@@ -100,9 +159,12 @@ object DiscoveryRepository {
 
     // Updates local recommendation state when an item is saved.
     fun trackSave(item: DiscoveryItem) {
+        ensureScope()
         savedItemIds.add(item.id)
-        styleScores[item.style] = (styleScores[item.style] ?: 0) + 4
-        studioScores[item.studio] = (studioScores[item.studio] ?: 0) + 4
+        val styleId = RecommendationNormalizer.styleId(item.style)
+        val studioId = RecommendationNormalizer.id(item.studio)
+        styleScores[styleId] = (styleScores[styleId] ?: 0.0) + 4.0
+        studioScores[studioId] = (studioScores[studioId] ?: 0.0) + 4.0
         lastReason = "Because you saved ${item.studio}"
     }
 
@@ -114,6 +176,7 @@ object DiscoveryRepository {
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
         val uid = auth.currentUser?.uid
         if (uid == null) {
             onFailure("User is not logged in")
@@ -142,6 +205,7 @@ object DiscoveryRepository {
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
         val uid = auth.currentUser?.uid
         if (uid == null) {
             onFailure("User is not logged in")
@@ -186,6 +250,7 @@ object DiscoveryRepository {
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
         val uid = auth.currentUser?.uid
         if (uid == null) {
             onFailure("User is not logged in")
@@ -237,6 +302,7 @@ object DiscoveryRepository {
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
         val uid = auth.currentUser?.uid
         if (uid == null) {
             onFailure("User is not logged in")
@@ -259,26 +325,14 @@ object DiscoveryRepository {
 
     // Returns discovery items ranked for the user.
     fun recommendedItems(): List<DiscoveryItem> {
-        val candidates = RecommendationEngine.generateCandidates(
-            items = allItems(),
-            preferredStyles = preferredStyles,
-            preferredLevel = preferredLevel,
-            preferredLocation = preferredLocation,
-            savedItemIds = savedItemIds,
-            styleScores = styleScores,
-            studioScores = studioScores,
-            teacherScores = teacherScores
-        )
-        return RecommendationEngine.rankCandidates(
-            candidates = candidates,
-            preferredStyles = preferredStyles,
-            preferredLevel = preferredLevel,
-            preferredLocation = preferredLocation,
-            savedItemIds = savedItemIds,
-            styleScores = styleScores,
-            studioScores = studioScores,
-            teacherScores = teacherScores
-        ).map { it.item }
+        return recommendedItems(recommendationContext(RecommendationSurface.DISCOVER))
+    }
+
+    fun recommendedItems(context: RecommendationContext): List<DiscoveryItem> {
+        ensureScope()
+        val ranked = DiscoverRankingStrategy.rank(allItems(), context)
+        logExplanations(ranked.take(8).map { DiscoverRankingStrategy.score(it, context) })
+        return ranked
     }
 
     // Returns ranked discovery results with explanations.
@@ -289,9 +343,9 @@ object DiscoveryRepository {
             preferredLevel = preferredLevel,
             preferredLocation = preferredLocation,
             savedItemIds = savedItemIds,
-            styleScores = styleScores,
-            studioScores = studioScores,
-            teacherScores = teacherScores
+            styleScores = styleScores.toIntScores(),
+            studioScores = studioScores.toIntScores(),
+            teacherScores = teacherScores.toIntScores()
         )
         return RecommendationEngine.rankCandidates(
             candidates = candidates,
@@ -299,17 +353,72 @@ object DiscoveryRepository {
             preferredLevel = preferredLevel,
             preferredLocation = preferredLocation,
             savedItemIds = savedItemIds,
-            styleScores = styleScores,
-            studioScores = studioScores,
-            teacherScores = teacherScores
+            styleScores = styleScores.toIntScores(),
+            studioScores = studioScores.toIntScores(),
+            teacherScores = teacherScores.toIntScores()
         )
     }
 
     // Returns popular discovery items near the preferred location.
     fun popularNearYou(): List<DiscoveryItem> {
-        return allItems()
-            .filter { it.location.equals(preferredLocation, ignoreCase = true) }
-            .ifEmpty { allItems().take(3) }
+        return popularNearYou(recommendationContext(RecommendationSurface.DISCOVER))
+    }
+
+    fun popularNearYou(context: RecommendationContext): List<DiscoveryItem> {
+        ensureScope()
+        val resolved = LocationSourceResolver.resolve(context)
+        val nearby = if (resolved.cityId.isBlank()) {
+            emptyList()
+        } else {
+            allItems().filter { CityOptions.normalizeCityId(it.location) == resolved.cityId }
+        }
+        return nearby.ifEmpty { allItems().take(3) }
+    }
+
+    fun currentRecommendationProfile(): RecommendationProfile {
+        ensureScope()
+        val locationScores = preferredLocation.takeIf { it.isNotBlank() }
+            ?.let { mapOf((CityOptions.normalizeCityId(it) ?: RecommendationNormalizer.id(it)) to 3.0) }
+            .orEmpty()
+        return RecommendationProfile(
+            userId = scopedUserId,
+            danceStyles = preferredStyles.toList(),
+            danceLevel = preferredLevel,
+            profileLocation = preferredLocation,
+            preferredRecommendationArea = preferredLocation,
+            styleScores = styleScores.toMap(),
+            locationScores = locationScores,
+            studioScores = studioScores.toMap(),
+            teacherScores = teacherScores.toMap(),
+            savedItemIds = savedItemIds.toSet()
+        )
+    }
+
+    fun recommendationContext(
+        surface: RecommendationSurface,
+        manualSelectedLocation: String = "",
+        currentDeviceLocation: GeoPoint? = null,
+        mapCameraLocation: GeoPoint? = null,
+        selectedFilters: Map<String, String> = emptyMap(),
+        followingIds: Set<String> = emptySet(),
+        profileOverride: RecommendationProfile? = null
+    ): RecommendationContext {
+        ensureScope()
+        val profile = profileOverride ?: currentRecommendationProfile()
+        return RecommendationContext(
+            userId = profile.userId.ifBlank { scopedUserId },
+            surface = surface,
+            profileLocation = profile.profileLocation,
+            preferredRecommendationArea = profile.preferredRecommendationArea,
+            currentDeviceLocation = currentDeviceLocation,
+            manualSelectedLocation = CityOptions.normalizeOptionalCity(manualSelectedLocation).orEmpty(),
+            mapCameraLocation = mapCameraLocation,
+            selectedFilters = selectedFilters,
+            danceStyles = profile.danceStyles,
+            danceLevel = profile.danceLevel,
+            followingIds = followingIds,
+            recommendationProfile = profile
+        )
     }
 
     // Returns Google Places studios that survived duplicate filtering.
@@ -326,12 +435,14 @@ object DiscoveryRepository {
         studio: String,
         time: String
     ): List<DiscoveryItem> {
+        ensureScope()
         trackSearch(style, location)
+        val locationId = CityOptions.normalizeCityId(location)
 
         return allItems().filter { item ->
             item.matches(style, item.style) &&
                 item.matches(level, item.level) &&
-                item.matches(location, item.location) &&
+                (location.isBlank() || locationId == null && item.matches(location, item.location) || locationId != null && CityOptions.normalizeCityId(item.location) == locationId) &&
                 item.matches(teacher, item.teacher) &&
                 item.matches(studio, item.studio) &&
                 item.matches(time, item.time)
@@ -345,6 +456,7 @@ object DiscoveryRepository {
 
     // Adds items to the temporary in-app cache so saved items can open in Detail.
     fun rememberItems(items: List<DiscoveryItem>) {
+        ensureScope()
         if (items.isEmpty()) return
         val existingById = firebaseItems.associateBy { it.id }.toMutableMap()
         items.forEach { item ->
@@ -358,6 +470,7 @@ object DiscoveryRepository {
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
         db.collection(Constants.Collections.STUDIOS)
             .get()
             .addOnSuccessListener { snapshot ->
@@ -375,7 +488,8 @@ object DiscoveryRepository {
                     if (studioName.isBlank()) return@mapNotNull null
 
                     val branchName = document.firstNonBlankString("branchName")
-                    val city = document.firstNonBlankString("city", "location")
+                    val city = CityOptions.normalizeOptionalCity(document.firstNonBlankString("city", "location")).orEmpty()
+                        .ifBlank { document.firstNonBlankString("city", "location") }
                     val googlePlaceId = document.firstNonBlankString("googlePlaceId")
                     val title = listOf(studioName, branchName)
                         .filter { it.isNotBlank() }
@@ -414,6 +528,7 @@ object DiscoveryRepository {
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
         activityRepository.loadPublishedActivities(
             onSuccess = { activities ->
                 activityItems = activityRepository.toDiscoveryItems(activities)
@@ -429,15 +544,19 @@ object DiscoveryRepository {
         city: String = "",
         location: Location? = null,
         usePreferredCityFallback: Boolean = true,
+        cacheKey: String = "default",
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
+        ensureScope()
+        activeExternalCacheKey = cacheKey
         GooglePlacesStudioDataSource(context).searchStudios(
             query = query,
             city = city.ifBlank { if (usePreferredCityFallback) preferredLocation else "" },
             location = location,
             onSuccess = { studios ->
                 externalItems = studios
+                externalItemsByCacheKey[cacheKey] = studios
                 externalStatusMessage = if (studios.isEmpty()) {
                     "No Google studios found for this area yet."
                 } else {
@@ -447,6 +566,7 @@ object DiscoveryRepository {
             },
             onFailure = { error ->
                 externalItems = emptyList()
+                externalItemsByCacheKey[cacheKey] = emptyList()
                 externalStatusMessage = error
                 onFailure(error)
             }
@@ -461,10 +581,11 @@ object DiscoveryRepository {
         location: String
     ): List<DiscoveryItem> {
         val normalizedQuery = query.trim()
+        val locationId = CityOptions.normalizeCityId(location)
         return allItems().filter { item ->
             item.matches(style, item.style) &&
                 item.matchesLevel(level) &&
-                item.matches(location, item.location) &&
+                (location.isBlank() || locationId == null && item.matches(location, item.location) || locationId != null && CityOptions.normalizeCityId(item.location) == locationId) &&
                 (
                     normalizedQuery.isBlank() ||
                         item.title.contains(normalizedQuery, ignoreCase = true) ||
@@ -481,6 +602,10 @@ object DiscoveryRepository {
 
     // Returns the recommendation explanation for an item.
     fun explanationFor(item: DiscoveryItem): String {
+        val context = recommendationContext(RecommendationSurface.DISCOVER)
+        DiscoverRankingStrategy.score(item, context).takeIf { it.components.isNotEmpty() }?.let { explanation ->
+            return explanation.reasons.joinToString(separator = "\n")
+        }
         return recommendationResults()
             .firstOrNull { it.item.id == item.id }
             ?.reasons
@@ -540,11 +665,31 @@ object DiscoveryRepository {
             level.equals("All levels", ignoreCase = true)
     }
 
+    private fun logExplanations(explanations: List<RecommendationScoreExplanation>) {
+        if (!BuildConfig.DEBUG) return
+        explanations.forEach { explanation ->
+            Log.d(
+                "RecommendationDebug",
+                buildString {
+                    append("${explanation.rankingStrategy}: ${explanation.itemType} ${explanation.itemId} score=${explanation.finalScore}")
+                    append(" source=${explanation.resolvedLocationSource}")
+                    if (explanation.appliedFilters.isNotEmpty()) append(" filters=${explanation.appliedFilters}")
+                    if (explanation.reasons.isNotEmpty()) append(" reasons=${explanation.reasons.joinToString("; ")}")
+                }
+            )
+        }
+    }
+
     // Returns loaded Firestore and external discovery items.
     private fun allItems(): List<DiscoveryItem> {
         val internal = firebaseItems + activityItems
-        if (externalItems.isEmpty()) return internal
-        return StudioDiscoveryUtils.mergeInternalAndExternal(internal, externalItems)
+        val scopedExternalItems = externalItemsByCacheKey[activeExternalCacheKey] ?: externalItems
+        if (scopedExternalItems.isEmpty()) return internal
+        return StudioDiscoveryUtils.mergeInternalAndExternal(internal, scopedExternalItems)
+    }
+
+    private fun Map<String, Double>.toIntScores(): Map<String, Int> {
+        return mapValues { it.value.toInt() }
     }
 
     // Maps a discovery item to the activity target type stored in Firebase.

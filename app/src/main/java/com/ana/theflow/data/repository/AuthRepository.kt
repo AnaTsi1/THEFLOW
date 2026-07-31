@@ -1,5 +1,6 @@
 package com.ana.theflow.data.repository
 
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.google.firebase.auth.FirebaseAuth
 
 class AuthRepository {
@@ -36,6 +37,8 @@ class AuthRepository {
 
     // Signs out the current user and returns to login.
     fun logout() {
+        DiscoveryRepository.resetForUser("")
+        ActiveAccountHolder.clear()
         auth.signOut()
     }
 

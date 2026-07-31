@@ -14,29 +14,53 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(uid);
     }
 
+    function studioDoc(studioId) {
+      return /databases/$(database)/documents/studios/$(studioId);
+    }
+
     function isAdmin() {
       return signedIn()
         && exists(userDoc(request.auth.uid))
         && get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin'];
     }
 
-    function isStudioManagerRole() {
+    // Studio permissions are additive and derived entirely from managedStudioIds - never from
+    // a role value. A user can be a dancer AND manage any number of studios at once.
+    function managesAnyStudio() {
       return signedIn()
         && exists(userDoc(request.auth.uid))
-        && get(userDoc(request.auth.uid)).data.role in ['studio_manager', 'STUDIO_MANAGER'];
+        && 'managedStudioIds' in get(userDoc(request.auth.uid)).data
+        && get(userDoc(request.auth.uid)).data.managedStudioIds.size() > 0;
+    }
+
+    function managesStudio(studioId) {
+      return signedIn()
+        && studioId is string && studioId != ''
+        && exists(userDoc(request.auth.uid))
+        && 'managedStudioIds' in get(userDoc(request.auth.uid)).data
+        && studioId in get(userDoc(request.auth.uid)).data.managedStudioIds;
+    }
+
+    // Cross-document manager check read directly off the studio doc (used when the caller's own
+    // user doc isn't what's being written, e.g. posts/jobs/conversations belonging to a studio).
+    function isManagerOfStudioDoc(studioId) {
+      return signedIn()
+        && studioId is string && studioId != ''
+        && exists(studioDoc(studioId))
+        && (
+          get(studioDoc(studioId)).data.ownerUid == request.auth.uid
+          || request.auth.uid in get(studioDoc(studioId)).data.managerUids
+        );
     }
 
     function isApprovedProfessional() {
       return signedIn()
         && exists(userDoc(request.auth.uid))
         && (
-          get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin', 'studio_manager', 'STUDIO_MANAGER']
+          get(userDoc(request.auth.uid)).data.role in ['admin', 'ADMIN', 'Admin']
           || get(userDoc(request.auth.uid)).data.verifiedTeacher == true
           || get(userDoc(request.auth.uid)).data.verifiedChoreographer == true
-          || (
-            'managedStudioIds' in get(userDoc(request.auth.uid)).data
-            && get(userDoc(request.auth.uid)).data.managedStudioIds.size() > 0
-          )
+          || managesAnyStudio()
         );
     }
 
@@ -53,11 +77,16 @@ service cloud.firestore {
         && unchanged('managedStudioIds');
     }
 
+    // Self-registration only ever produces a plain dancer account with no permissions. Every
+    // professional/studio permission is granted later by an admin, never chosen at signup.
     function createsOwnUser(uid) {
       return isOwner(uid)
         && request.resource.data.uid == uid
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role in ['dancer', 'studio_manager', 'DANCER', 'STUDIO_MANAGER'];
+        && request.resource.data.role in ['dancer', 'DANCER']
+        && (!('managedStudioIds' in request.resource.data) || request.resource.data.managedStudioIds.size() == 0)
+        && (!('verifiedTeacher' in request.resource.data) || request.resource.data.verifiedTeacher == false)
+        && (!('verifiedChoreographer' in request.resource.data) || request.resource.data.verifiedChoreographer == false);
     }
 
     function isPostAuthor() {
@@ -156,19 +185,59 @@ service cloud.firestore {
         );
     }
 
-    function createsStudioDraft() {
-      return signedIn()
-        && request.resource.data.status == 'PENDING'
-        && request.resource.data.verified == false
-        && (
-          !('ownerUid' in request.resource.data)
-          || request.resource.data.ownerUid == ''
-          || request.resource.data.ownerUid == request.auth.uid
-        );
+    // Guards the fields only an admin may ever change on a studio: ownership, manager list,
+    // verification, and lifecycle status. Fixes a prior hole where any current manager could
+    // silently self-verify a studio or rewrite its manager list.
+    function keepsStudioAdminFieldsSafe() {
+      return unchanged('ownerUid')
+        && unchanged('managerUids')
+        && unchanged('verified')
+        && unchanged('status')
+        && unchanged('googlePlaceId')
+        && unchanged('externalSource')
+        && unchanged('claimStatus')
+        && unchanged('claimUpdatedAt');
     }
 
     function isVisibleStudio() {
       return resource.data.verified == true || resource.data.status == 'APPROVED';
+    }
+
+    function previousStudioFollowersCount() {
+      return ('followersCount' in resource.data) ? resource.data.followersCount : 0;
+    }
+
+    // Lets any signed-in user toggle their own follow of a studio without needing manager
+    // access, mirroring isSafeLikeCountUpdate() on posts.
+    function isSafeStudioFollowerCountUpdate() {
+      return signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount'])
+        && (
+          request.resource.data.followersCount == previousStudioFollowersCount() + 1
+          || request.resource.data.followersCount == previousStudioFollowersCount() - 1
+        )
+        && request.resource.data.followersCount >= 0;
+    }
+
+    function createsStudioRequest() {
+      return signedIn()
+        && request.resource.data.requesterUid == request.auth.uid
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.type in ['CREATE', 'CLAIM']
+        && (
+          (
+            request.resource.data.type == 'CREATE'
+            && request.resource.data.draftDisplayName is string
+            && request.resource.data.draftDisplayName.size() > 0
+            && (!('studioId' in request.resource.data) || request.resource.data.studioId == '')
+          )
+          || (
+            request.resource.data.type == 'CLAIM'
+            && request.resource.data.studioId is string
+            && request.resource.data.studioId != ''
+          )
+        )
+        && (!('resultStudioId' in request.resource.data) || request.resource.data.resultStudioId == '');
     }
 
     function isConversationParticipant(conversationId) {
@@ -304,6 +373,16 @@ service cloud.firestore {
 
       match /recommendationProfile/{profileId} {
         allow read, write: if isOwner(uid) || isAdmin();
+
+        match /signalDedupe/{dedupeId} {
+          allow read, create, update: if isOwner(uid) || isAdmin();
+          allow delete: if isAdmin();
+        }
+      }
+
+      match /recommendationImpressions/{impressionId} {
+        allow read, create, update: if isOwner(uid) || isAdmin();
+        allow delete: if isAdmin();
       }
 
       match /followingDancers/{followId} {
@@ -492,23 +571,26 @@ service cloud.firestore {
     match /studios/{studioId} {
       allow get: if signedIn() && (isVisibleStudio() || isStudioOwnerOrManager() || isAdmin());
       allow list: if signedIn();
-      allow create: if createsStudioDraft() || isAdmin();
+      // Studios are never self-service created - they only ever come from an admin approving a
+      // studioRequests document (create or claim).
+      allow create: if isAdmin();
       allow update: if isAdmin()
         || (
           isStudioOwnerOrManager()
-          && unchanged('googlePlaceId')
-          && unchanged('externalSource')
-          && unchanged('claimStatus')
-          && unchanged('claimUpdatedAt')
+          && keepsStudioAdminFieldsSafe()
         )
         || (
-          isStudioManagerRole()
+          // Any signed-in user may flag an unowned, visible studio as claim-pending - this is
+          // the one write StudioRequestRepository.submitClaimRequest performs before an admin
+          // reviews the resulting request.
+          signedIn()
           && isVisibleStudio()
           && (!('ownerUid' in resource.data) || resource.data.ownerUid == '')
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['claimStatus', 'claimUpdatedAt'])
           && request.resource.data.claimStatus == 'PENDING'
-        );
+        )
+        || isSafeStudioFollowerCountUpdate();
       allow delete: if isAdmin();
 
       match /followers/{uid} {
@@ -525,22 +607,29 @@ service cloud.firestore {
       }
     }
 
+    // Legacy collection, kept read-only so any in-flight claims can still drain through the
+    // admin queue. All new requests go to /studioRequests instead.
     match /studioClaims/{claimId} {
       allow get, list: if isAdmin()
         || (signedIn() && resource.data.requesterUid == request.auth.uid)
         || (signedIn() && resource.data.status == 'PENDING');
-      allow create: if isStudioManagerRole()
-        && request.resource.data.requesterUid == request.auth.uid
-        && request.resource.data.status == 'PENDING'
-        && request.resource.data.studioId is string
-        && request.resource.data.studioId != ''
-        && (
-          !('googlePlaceId' in request.resource.data)
-          || request.resource.data.googlePlaceId is string
-        );
+      allow create: if false;
       allow update: if isAdmin()
         && resource.data.requesterUid != request.auth.uid;
       allow delete: if isAdmin();
+    }
+
+    match /studioRequests/{requestId} {
+      allow get, list: if isAdmin()
+        || (signedIn() && resource.data.requesterUid == request.auth.uid);
+      allow create: if createsStudioRequest();
+      allow update: if isAdmin()
+        && resource.data.requesterUid != request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /permissionGrants/{grantId} {
+      allow read, write: if isAdmin();
     }
 
     match /externalStudios/{placeId} {
@@ -557,7 +646,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.applicantUid == request.auth.uid
         && request.resource.data.status == 'pending'
-        && request.resource.data.applicationType in ['verified_teacher', 'choreographer', 'studio'];
+        && request.resource.data.applicationType in ['verified_teacher', 'choreographer'];
       allow update: if isAdmin()
         || (
           signedIn()

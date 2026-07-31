@@ -1,83 +1,102 @@
 package com.ana.theflow.data.repository
 
+import com.ana.theflow.data.model.permission.PermissionGrant
 import com.ana.theflow.data.model.professional.ProfessionalApplication
 import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.report.ContentReport
+import com.ana.theflow.data.model.studio.Studio
 import com.ana.theflow.data.model.studio.StudioClaim
+import com.ana.theflow.data.model.studio.StudioRequest
+import com.ana.theflow.data.model.user.User
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 
+// Every permission mutation in the app funnels through here: studio create/claim approval,
+// professional verification, and direct grant/revoke of teacher/choreographer/manager status.
+// Nothing outside this class (and Firestore rules) may write role/verified*/managedStudioIds.
 class AdminRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     private val notificationRepository = NotificationRepository()
 
-    // Loads pending studio claims and professional applications for admin review.
+    // Loads pending studio requests (new + legacy), professional applications, and content
+    // reports for admin review.
     fun loadPendingReviews(
         onSuccess: (AdminReviewData) -> Unit,
         onFailure: (String) -> Unit
     ) {
         ensureAdmin(
             onSuccess = {
-                var claims: List<StudioClaim>? = null
-                var applications: List<ProfessionalApplication>? = null
-                var reports: List<ContentReport>? = null
+                val newRequests = mutableListOf<StudioRequest>()
+                val legacyRequests = mutableListOf<StudioRequest>()
+                var applications: List<ProfessionalApplication> = emptyList()
+                var reports: List<ContentReport> = emptyList()
                 val warnings = mutableListOf<String>()
+                var pendingLoads = 4
 
-                fun finishIfReady() {
-                    val loadedClaims = claims
-                    val loadedApplications = applications
-                    val loadedReports = reports
-                    if (loadedClaims != null && loadedApplications != null && loadedReports != null) {
-                        onSuccess(
-                            AdminReviewData(
-                                studioClaims = loadedClaims,
-                                professionalApplications = loadedApplications,
-                                contentReports = loadedReports,
-                                warnings = warnings
-                            )
+                fun finishOne() {
+                    pendingLoads -= 1
+                    if (pendingLoads > 0) return
+                    onSuccess(
+                        AdminReviewData(
+                            studioRequests = (newRequests + legacyRequests).sortedByDescending { it.createdAt?.seconds ?: 0L },
+                            professionalApplications = applications,
+                            contentReports = reports,
+                            warnings = warnings
                         )
-                    }
+                    )
                 }
+
+                db.collection(Constants.Collections.STUDIO_REQUESTS)
+                    .whereEqualTo("status", StudioRequest.STATUS_PENDING)
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        newRequests.addAll(snapshot.documents.mapNotNull { document ->
+                            document.toObject(StudioRequest::class.java)
+                                ?.copy(requestId = document.id, sourceCollection = StudioRequest.SOURCE_STUDIO_REQUESTS)
+                        })
+                        finishOne()
+                    }
+                    .addOnFailureListener { error ->
+                        warnings.add("Studio requests could not load: ${error.message ?: "permission problem"}")
+                        finishOne()
+                    }
 
                 db.collection(Constants.Collections.STUDIO_CLAIMS)
                     .whereEqualTo("status", "PENDING")
                     .get()
-                    .addOnSuccessListener { claimSnapshot ->
-                        claims = claimSnapshot.documents
-                            .map { document ->
-                                val claim = document.toObject(StudioClaim::class.java)
-                                claim?.copy(id = document.id)
-                            }
-                            .filterNotNull()
-                        finishIfReady()
+                    .addOnSuccessListener { snapshot ->
+                        legacyRequests.addAll(
+                            snapshot.documents.mapNotNull { document ->
+                                document.toObject(StudioClaim::class.java)?.copy(id = document.id)
+                            }.map { StudioRequest.fromLegacyClaim(it) }
+                        )
+                        finishOne()
                     }
                     .addOnFailureListener { error ->
-                        warnings.add("Studio claims could not load: ${error.message ?: "permission problem"}")
-                        claims = emptyList()
-                        finishIfReady()
+                        warnings.add("Legacy studio claims could not load: ${error.message ?: "permission problem"}")
+                        finishOne()
                     }
 
                 db.collection(Constants.Collections.PROFESSIONAL_APPLICATIONS)
                     .whereEqualTo("status", "pending")
                     .get()
                     .addOnSuccessListener { applicationSnapshot ->
-                        applications = applicationSnapshot.documents
-                            .mapNotNull { document ->
-                                document.toObject(ProfessionalApplication::class.java)
-                                    ?.copy(applicationId = document.id)
-                            }
-                        finishIfReady()
+                        applications = applicationSnapshot.documents.mapNotNull { document ->
+                            document.toObject(ProfessionalApplication::class.java)
+                                ?.copy(applicationId = document.id)
+                        }.filterNot { isLegacyStudioApplication(it.applicationType) }
+                        finishOne()
                     }
                     .addOnFailureListener { error ->
                         warnings.add("Professional applications could not load: ${error.message ?: "permission problem"}")
-                        applications = emptyList()
-                        finishIfReady()
+                        finishOne()
                     }
 
                 db.collection(Constants.Collections.CONTENT_REPORTS)
@@ -87,12 +106,11 @@ class AdminRepository {
                         reports = reportSnapshot.documents.mapNotNull { document ->
                             document.toObject(ContentReport::class.java)?.copy(reportId = document.id)
                         }.sortedByDescending { it.createdAt?.seconds ?: 0L }
-                        finishIfReady()
+                        finishOne()
                     }
                     .addOnFailureListener { error ->
                         warnings.add("Content reports could not load: ${error.message ?: "permission problem"}")
-                        reports = emptyList()
-                        finishIfReady()
+                        finishOne()
                     }
             },
             onFailure = onFailure
@@ -129,152 +147,78 @@ class AdminRepository {
         )
     }
 
-    // Approves a studio claim and links the studio to the requester.
-    fun approveStudioClaim(
-        claim: StudioClaim,
+    // Approves a studio create or claim request and grants the requester manager permissions.
+    // Never writes `role` - studio permission is entirely represented by managedStudioIds.
+    fun approveStudioRequest(
+        request: StudioRequest,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
         ensureAdmin(
             onSuccess = { adminUid ->
-                if (claim.id.isBlank() || claim.studioId.isBlank() || claim.requesterUid.isBlank()) {
-                    onFailure("Claim is missing required data")
+                if (request.requestId.isBlank() || request.requesterUid.isBlank()) {
+                    onFailure("Request is missing required data")
                     return@ensureAdmin
                 }
-
-                val claimRef = db.collection(Constants.Collections.STUDIO_CLAIMS).document(claim.id)
-                val isExternalClaim = claim.googlePlaceId.isNotBlank() && claim.studioId.startsWith("google_")
-                val studioRef = if (isExternalClaim) {
-                    db.collection(Constants.Collections.STUDIOS).document()
-                } else {
-                    db.collection(Constants.Collections.STUDIOS).document(claim.studioId)
+                when (request.type) {
+                    StudioRequest.TYPE_CREATE -> approveCreateRequest(request, adminUid, onSuccess, onFailure)
+                    StudioRequest.TYPE_CLAIM -> approveClaimRequest(request, adminUid, onSuccess, onFailure)
+                    else -> onFailure("Unknown request type")
                 }
-                val userRef = db.collection(Constants.Collections.USERS).document(claim.requesterUid)
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Rejects a studio create or claim request.
+    fun rejectStudioRequest(
+        request: StudioRequest,
+        adminNote: String = "",
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        ensureAdmin(
+            onSuccess = { adminUid ->
+                if (request.requestId.isBlank()) {
+                    onFailure("Request is missing required data")
+                    return@ensureAdmin
+                }
+                val requestRef = requestDocRef(request)
+                val isExternalClaim = request.type == StudioRequest.TYPE_CLAIM &&
+                    request.googlePlaceId.isNotBlank() && request.studioId.startsWith("google_")
 
                 db.runBatch { batch ->
                     batch.update(
-                        claimRef,
+                        requestRef,
                         mapOf(
-                            "status" to "APPROVED",
+                            "status" to StudioRequest.STATUS_REJECTED,
                             "reviewedAt" to FieldValue.serverTimestamp(),
-                            "reviewedByUid" to adminUid
+                            "reviewedByUid" to adminUid,
+                            "adminNote" to adminNote
                         )
                     )
-                    if (isExternalClaim) {
+                    if (request.type == StudioRequest.TYPE_CLAIM && request.studioId.isNotBlank() && !isExternalClaim) {
                         batch.set(
-                            studioRef,
-                            mapOf(
-                                "id" to studioRef.id,
-                                "displayName" to claim.studioName,
-                                "address" to claim.address,
-                                "city" to "",
-                                "location" to claim.address,
-                                "ownerUid" to claim.requesterUid,
-                                "managerUids" to listOf(claim.requesterUid),
-                                "googlePlaceId" to claim.googlePlaceId,
-                                "externalSource" to "google",
-                                "claimStatus" to "CLAIMED",
-                                "claimUpdatedAt" to FieldValue.serverTimestamp(),
-                                "status" to Constants.StudioStatus.APPROVED.name,
-                                "verified" to true
-                            ),
-                            SetOptions.merge()
-                        )
-                        batch.set(
-                            db.collection(Constants.Collections.EXTERNAL_STUDIOS).document(claim.googlePlaceId),
-                            mapOf(
-                                "googlePlaceId" to claim.googlePlaceId,
-                                "source" to "google",
-                                "claimedStudioId" to studioRef.id,
-                                "claimStatus" to "CLAIMED",
-                                "discoveredAt" to FieldValue.serverTimestamp(),
-                                "updatedAt" to FieldValue.serverTimestamp()
-                            ),
-                            SetOptions.merge()
-                        )
-                    } else {
-                        batch.set(
-                            studioRef,
-                            mapOf(
-                                "ownerUid" to claim.requesterUid,
-                                "managerUids" to FieldValue.arrayUnion(claim.requesterUid),
-                                "claimStatus" to "CLAIMED",
-                                "claimUpdatedAt" to Timestamp.now(),
-                                "status" to Constants.StudioStatus.APPROVED.name,
-                                "verified" to true
-                            ),
+                            db.collection(Constants.Collections.STUDIOS).document(request.studioId),
+                            mapOf("claimStatus" to "UNCLAIMED", "claimUpdatedAt" to Timestamp.now()),
                             SetOptions.merge()
                         )
                     }
-                    val managedStudioId = studioRef.id
-                    batch.set(
-                        userRef,
-                        mapOf(
-                            "role" to Constants.UserRole.STUDIO_MANAGER.firestoreValue,
-                            "managedStudioIds" to FieldValue.arrayUnion(managedStudioId),
-                            "professionalBadges" to FieldValue.arrayUnion("Studio Manager")
-                        ),
-                        SetOptions.merge()
-                    )
                 }
                     .addOnSuccessListener {
+                        notifyStudioRequestDecision(request, adminUid, approved = false)
                         onSuccess()
                     }
                     .addOnFailureListener { error ->
-                        onFailure(error.message ?: "Failed to approve studio claim")
+                        onFailure(error.message ?: "Failed to reject request")
                     }
             },
             onFailure = onFailure
         )
     }
 
-    // Rejects a studio claim and opens the studio for a future claim.
-    fun rejectStudioClaim(
-        claim: StudioClaim,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        ensureAdmin(
-            onSuccess = { adminUid ->
-                if (claim.id.isBlank()) {
-                    onFailure("Claim is missing required data")
-                    return@ensureAdmin
-                }
-
-                val claimRef = db.collection(Constants.Collections.STUDIO_CLAIMS).document(claim.id)
-                val isExternalClaim = claim.googlePlaceId.isNotBlank() && claim.studioId.startsWith("google_")
-                val studioRef = db.collection(Constants.Collections.STUDIOS).document(claim.studioId)
-
-                db.runBatch { batch ->
-                    batch.update(
-                        claimRef,
-                        mapOf(
-                            "status" to "REJECTED",
-                            "reviewedAt" to FieldValue.serverTimestamp(),
-                            "reviewedByUid" to adminUid
-                        )
-                    )
-                    if (claim.studioId.isNotBlank() && !isExternalClaim) {
-                        batch.set(
-                            studioRef,
-                            mapOf(
-                                "claimStatus" to "UNCLAIMED",
-                                "claimUpdatedAt" to Timestamp.now()
-                            ),
-                            SetOptions.merge()
-                        )
-                    }
-                }
-                    .addOnSuccessListener { onSuccess() }
-                    .addOnFailureListener { error ->
-                        onFailure(error.message ?: "Failed to reject studio claim")
-                    }
-            },
-            onFailure = onFailure
-        )
-    }
-
-    // Approves a professional application and updates the user's professional flags.
+    // Approves a professional application. Studio access is deliberately excluded here -
+    // it only ever comes from an approved studio request.
     fun approveProfessionalApplication(
         application: ProfessionalApplication,
         onSuccess: () -> Unit,
@@ -286,11 +230,15 @@ class AdminRepository {
                     onFailure("Application is missing required data")
                     return@ensureAdmin
                 }
+                val userUpdates = professionalApprovalUpdates(application.applicationType)
+                if (userUpdates == null) {
+                    onFailure("Studio access is granted through studio requests, not professional applications.")
+                    return@ensureAdmin
+                }
 
                 val applicationRef = db.collection(Constants.Collections.PROFESSIONAL_APPLICATIONS)
                     .document(application.applicationId)
                 val userRef = db.collection(Constants.Collections.USERS).document(application.applicantUid)
-                val userUpdates = professionalApprovalUpdates(application.applicationType)
 
                 db.runBatch { batch ->
                     batch.update(
@@ -327,7 +275,6 @@ class AdminRepository {
                     onFailure("Application is missing required data")
                     return@ensureAdmin
                 }
-
                 db.collection(Constants.Collections.PROFESSIONAL_APPLICATIONS)
                     .document(application.applicationId)
                     .update(
@@ -347,6 +294,471 @@ class AdminRepository {
             },
             onFailure = onFailure
         )
+    }
+
+    // Grants or revokes the additive Verified Teacher / Choreographer permissions directly.
+    fun grantTeacher(targetUid: String, note: String = "", onSuccess: () -> Unit, onFailure: (String) -> Unit) =
+        setBooleanPermission(targetUid, "verifiedTeacher", true, PermissionGrant.Actions.GRANT_TEACHER, "Verified Teacher", note, onSuccess, onFailure)
+
+    fun revokeTeacher(targetUid: String, note: String = "", onSuccess: () -> Unit, onFailure: (String) -> Unit) =
+        setBooleanPermission(targetUid, "verifiedTeacher", false, PermissionGrant.Actions.REVOKE_TEACHER, "Verified Teacher", note, onSuccess, onFailure)
+
+    fun grantChoreographer(targetUid: String, note: String = "", onSuccess: () -> Unit, onFailure: (String) -> Unit) =
+        setBooleanPermission(targetUid, "verifiedChoreographer", true, PermissionGrant.Actions.GRANT_CHOREOGRAPHER, "Choreographer", note, onSuccess, onFailure)
+
+    fun revokeChoreographer(targetUid: String, note: String = "", onSuccess: () -> Unit, onFailure: (String) -> Unit) =
+        setBooleanPermission(targetUid, "verifiedChoreographer", false, PermissionGrant.Actions.REVOKE_CHOREOGRAPHER, "Choreographer", note, onSuccess, onFailure)
+
+    // Adds a user as an additional manager of an existing studio.
+    fun addStudioManager(studioId: String, targetUid: String, note: String = "", onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        ensureAdmin(
+            onSuccess = { adminUid ->
+                if (studioId.isBlank() || targetUid.isBlank()) {
+                    onFailure("Missing studio or user id")
+                    return@ensureAdmin
+                }
+                db.collection(Constants.Collections.USERS).document(targetUid).get()
+                    .addOnSuccessListener { userDocument ->
+                        val targetName = fullNameFrom(userDocument)
+                        val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+                        db.runBatch { batch ->
+                            batch.set(
+                                db.collection(Constants.Collections.STUDIOS).document(studioId),
+                                mapOf("managerUids" to FieldValue.arrayUnion(targetUid)),
+                                SetOptions.merge()
+                            )
+                            batch.set(
+                                db.collection(Constants.Collections.USERS).document(targetUid),
+                                mapOf(
+                                    "managedStudioIds" to FieldValue.arrayUnion(studioId),
+                                    "professionalBadges" to FieldValue.arrayUnion("Studio Manager")
+                                ),
+                                SetOptions.merge()
+                            )
+                            batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, targetUid, targetName, PermissionGrant.Actions.ADD_MANAGER, studioId, note))
+                        }
+                            .addOnSuccessListener {
+                                notificationRepository.createNotification(
+                                    recipientUid = targetUid,
+                                    type = InAppNotification.Types.PROFESSIONAL_APPROVED,
+                                    actorId = adminUid,
+                                    title = "Studio access granted",
+                                    message = "You were added as a manager of a studio.",
+                                    dedupeId = "manager_added_${studioId}_$targetUid"
+                                )
+                                onSuccess()
+                            }
+                            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to add manager") }
+                    }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load user") }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Removes a manager from a studio. Refuses to remove the current owner - transfer first.
+    fun removeStudioManager(studioId: String, targetUid: String, note: String = "", onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        ensureAdmin(
+            onSuccess = { adminUid ->
+                if (studioId.isBlank() || targetUid.isBlank()) {
+                    onFailure("Missing studio or user id")
+                    return@ensureAdmin
+                }
+                db.collection(Constants.Collections.STUDIOS).document(studioId).get()
+                    .addOnSuccessListener { studioDocument ->
+                        if (studioDocument.getString("ownerUid") == targetUid) {
+                            onFailure("Transfer ownership before removing this manager")
+                            return@addOnSuccessListener
+                        }
+                        db.collection(Constants.Collections.USERS).document(targetUid).get()
+                            .addOnSuccessListener { userDocument ->
+                                val targetName = fullNameFrom(userDocument)
+                                val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+                                db.runBatch { batch ->
+                                    batch.set(
+                                        db.collection(Constants.Collections.STUDIOS).document(studioId),
+                                        mapOf("managerUids" to FieldValue.arrayRemove(targetUid)),
+                                        SetOptions.merge()
+                                    )
+                                    batch.set(
+                                        db.collection(Constants.Collections.USERS).document(targetUid),
+                                        mapOf("managedStudioIds" to FieldValue.arrayRemove(studioId)),
+                                        SetOptions.merge()
+                                    )
+                                    batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, targetUid, targetName, PermissionGrant.Actions.REMOVE_MANAGER, studioId, note))
+                                }
+                                    .addOnSuccessListener {
+                                        notificationRepository.createNotification(
+                                            recipientUid = targetUid,
+                                            type = InAppNotification.Types.PROFESSIONAL_REJECTED,
+                                            actorId = adminUid,
+                                            title = "Studio access removed",
+                                            message = "You are no longer a manager of a studio.",
+                                            dedupeId = "manager_removed_${studioId}_$targetUid"
+                                        )
+                                        onSuccess()
+                                    }
+                                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to remove manager") }
+                            }
+                            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load user") }
+                    }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load studio") }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Transfers studio ownership to another user, keeping them as a manager as well.
+    fun transferStudioOwner(studioId: String, newOwnerUid: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        ensureAdmin(
+            onSuccess = { adminUid ->
+                if (studioId.isBlank() || newOwnerUid.isBlank()) {
+                    onFailure("Missing studio or user id")
+                    return@ensureAdmin
+                }
+                db.collection(Constants.Collections.USERS).document(newOwnerUid).get()
+                    .addOnSuccessListener { userDocument ->
+                        val targetName = fullNameFrom(userDocument)
+                        val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+                        db.runBatch { batch ->
+                            batch.set(
+                                db.collection(Constants.Collections.STUDIOS).document(studioId),
+                                mapOf(
+                                    "ownerUid" to newOwnerUid,
+                                    "managerUids" to FieldValue.arrayUnion(newOwnerUid)
+                                ),
+                                SetOptions.merge()
+                            )
+                            batch.set(
+                                db.collection(Constants.Collections.USERS).document(newOwnerUid),
+                                mapOf(
+                                    "managedStudioIds" to FieldValue.arrayUnion(studioId),
+                                    "professionalBadges" to FieldValue.arrayUnion("Studio Manager")
+                                ),
+                                SetOptions.merge()
+                            )
+                            batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, newOwnerUid, targetName, PermissionGrant.Actions.SET_OWNER, studioId, ""))
+                        }
+                            .addOnSuccessListener { onSuccess() }
+                            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to transfer ownership") }
+                    }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load user") }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Verifies or unverifies a studio's business badge.
+    fun setStudioVerified(studioId: String, verified: Boolean, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        ensureAdmin(
+            onSuccess = { adminUid ->
+                if (studioId.isBlank()) {
+                    onFailure("Missing studio id")
+                    return@ensureAdmin
+                }
+                val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+                db.runBatch { batch ->
+                    batch.set(
+                        db.collection(Constants.Collections.STUDIOS).document(studioId),
+                        mapOf("verified" to verified, "updatedAt" to FieldValue.serverTimestamp()),
+                        SetOptions.merge()
+                    )
+                    batch.set(
+                        grantRef,
+                        permissionGrantMap(
+                            grantRef.id, adminUid, "", "",
+                            if (verified) PermissionGrant.Actions.VERIFY_STUDIO else PermissionGrant.Actions.UNVERIFY_STUDIO,
+                            studioId, ""
+                        )
+                    )
+                }
+                    .addOnSuccessListener { onSuccess() }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to update studio") }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    // Loads a user plus every studio they currently manage, for the permissions editor.
+    fun loadUserPermissions(uid: String, onSuccess: (User, List<Studio>) -> Unit, onFailure: (String) -> Unit) {
+        ensureAdmin(
+            onSuccess = {
+                db.collection(Constants.Collections.USERS).document(uid).get()
+                    .addOnSuccessListener { userDocument ->
+                        val user = userDocument.toObject(User::class.java)?.copy(uid = userDocument.id)
+                        if (user == null) {
+                            onFailure("User was not found")
+                            return@addOnSuccessListener
+                        }
+                        val ids = user.managedStudioIds.filter { it.isNotBlank() }
+                        if (ids.isEmpty()) {
+                            onSuccess(user, emptyList())
+                            return@addOnSuccessListener
+                        }
+                        StudioRepository().loadStudiosByIds(
+                            ids = ids,
+                            onSuccess = { studios -> onSuccess(user, studios) },
+                            onFailure = { onSuccess(user, emptyList()) }
+                        )
+                    }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load user") }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    private fun approveCreateRequest(
+        request: StudioRequest,
+        adminUid: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val requestRef = requestDocRef(request)
+        val studioRef = db.collection(Constants.Collections.STUDIOS).document()
+        val userRef = db.collection(Constants.Collections.USERS).document(request.requesterUid)
+        val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+
+        db.runBatch { batch ->
+            batch.update(
+                requestRef,
+                mapOf(
+                    "status" to StudioRequest.STATUS_APPROVED,
+                    "reviewedAt" to FieldValue.serverTimestamp(),
+                    "reviewedByUid" to adminUid,
+                    "resultStudioId" to studioRef.id
+                )
+            )
+            batch.set(
+                studioRef,
+                mapOf(
+                    "id" to studioRef.id,
+                    "displayName" to request.draftDisplayName,
+                    "searchName" to request.draftDisplayName.lowercase(),
+                    "city" to request.draftCity,
+                    "address" to request.draftAddress,
+                    "location" to request.draftCity,
+                    "bio" to request.draftBio,
+                    "danceStyles" to request.draftDanceStyles,
+                    "websiteUrl" to request.draftWebsiteUrl,
+                    "contactPhone" to request.draftContactPhone,
+                    "contactEmail" to request.draftContactEmail,
+                    "socialLinks" to request.draftSocialLinks,
+                    "ownerUid" to request.requesterUid,
+                    "managerUids" to listOf(request.requesterUid),
+                    "verified" to true,
+                    "status" to Constants.StudioStatus.APPROVED.name,
+                    "claimStatus" to "CLAIMED",
+                    "claimUpdatedAt" to Timestamp.now(),
+                    "createdByUid" to request.requesterUid,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+            batch.set(
+                userRef,
+                mapOf(
+                    "managedStudioIds" to FieldValue.arrayUnion(studioRef.id),
+                    "professionalBadges" to FieldValue.arrayUnion("Studio Manager")
+                ),
+                SetOptions.merge()
+            )
+            batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, request.requesterUid, request.requesterName, PermissionGrant.Actions.APPROVE_STUDIO_REQUEST, studioRef.id, ""))
+        }
+            .addOnSuccessListener {
+                notifyStudioRequestDecision(request, adminUid, approved = true)
+                onSuccess()
+            }
+            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to approve request") }
+    }
+
+    private fun approveClaimRequest(
+        request: StudioRequest,
+        adminUid: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (request.studioId.isBlank()) {
+            onFailure("Claim is missing required data")
+            return
+        }
+
+        val requestRef = requestDocRef(request)
+        val isExternalClaim = request.googlePlaceId.isNotBlank() && request.studioId.startsWith("google_")
+        val studioRef = if (isExternalClaim) {
+            db.collection(Constants.Collections.STUDIOS).document()
+        } else {
+            db.collection(Constants.Collections.STUDIOS).document(request.studioId)
+        }
+        val userRef = db.collection(Constants.Collections.USERS).document(request.requesterUid)
+        val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+
+        db.runBatch { batch ->
+            batch.update(
+                requestRef,
+                mapOf(
+                    "status" to StudioRequest.STATUS_APPROVED,
+                    "reviewedAt" to FieldValue.serverTimestamp(),
+                    "reviewedByUid" to adminUid,
+                    "resultStudioId" to studioRef.id
+                )
+            )
+            if (isExternalClaim) {
+                batch.set(
+                    studioRef,
+                    mapOf(
+                        "id" to studioRef.id,
+                        "displayName" to request.studioName,
+                        "address" to request.address,
+                        "city" to "",
+                        "location" to request.address,
+                        "ownerUid" to request.requesterUid,
+                        "managerUids" to listOf(request.requesterUid),
+                        "googlePlaceId" to request.googlePlaceId,
+                        "externalSource" to "google",
+                        "claimStatus" to "CLAIMED",
+                        "claimUpdatedAt" to Timestamp.now(),
+                        "status" to Constants.StudioStatus.APPROVED.name,
+                        "verified" to true
+                    ),
+                    SetOptions.merge()
+                )
+                batch.set(
+                    db.collection(Constants.Collections.EXTERNAL_STUDIOS).document(request.googlePlaceId),
+                    mapOf(
+                        "googlePlaceId" to request.googlePlaceId,
+                        "source" to "google",
+                        "claimedStudioId" to studioRef.id,
+                        "claimStatus" to "CLAIMED",
+                        "discoveredAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    ),
+                    SetOptions.merge()
+                )
+            } else {
+                batch.set(
+                    studioRef,
+                    mapOf(
+                        "ownerUid" to request.requesterUid,
+                        "managerUids" to FieldValue.arrayUnion(request.requesterUid),
+                        "claimStatus" to "CLAIMED",
+                        "claimUpdatedAt" to Timestamp.now(),
+                        "status" to Constants.StudioStatus.APPROVED.name,
+                        "verified" to true
+                    ),
+                    SetOptions.merge()
+                )
+            }
+            batch.set(
+                userRef,
+                mapOf(
+                    "managedStudioIds" to FieldValue.arrayUnion(studioRef.id),
+                    "professionalBadges" to FieldValue.arrayUnion("Studio Manager")
+                ),
+                SetOptions.merge()
+            )
+            batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, request.requesterUid, request.requesterName, PermissionGrant.Actions.APPROVE_STUDIO_REQUEST, studioRef.id, ""))
+        }
+            .addOnSuccessListener {
+                notifyStudioRequestDecision(request, adminUid, approved = true)
+                onSuccess()
+            }
+            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to approve studio claim") }
+    }
+
+    private fun setBooleanPermission(
+        targetUid: String,
+        field: String,
+        value: Boolean,
+        action: String,
+        badge: String,
+        note: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        ensureAdmin(
+            onSuccess = { adminUid ->
+                if (targetUid.isBlank()) {
+                    onFailure("Missing user id")
+                    return@ensureAdmin
+                }
+                db.collection(Constants.Collections.USERS).document(targetUid).get()
+                    .addOnSuccessListener { userDocument ->
+                        val targetName = fullNameFrom(userDocument)
+                        val userUpdates = mutableMapOf<String, Any>(field to value)
+                        userUpdates["professionalBadges"] = if (value) {
+                            FieldValue.arrayUnion(badge)
+                        } else {
+                            FieldValue.arrayRemove(badge)
+                        }
+                        val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+                        db.runBatch { batch ->
+                            batch.set(db.collection(Constants.Collections.USERS).document(targetUid), userUpdates, SetOptions.merge())
+                            batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, targetUid, targetName, action, "", note))
+                        }
+                            .addOnSuccessListener {
+                                notificationRepository.createNotification(
+                                    recipientUid = targetUid,
+                                    type = if (value) InAppNotification.Types.PROFESSIONAL_APPROVED else InAppNotification.Types.PROFESSIONAL_REJECTED,
+                                    actorId = adminUid,
+                                    title = if (value) "Permission granted" else "Permission updated",
+                                    message = if (value) "You are now a $badge." else "Your $badge status was removed.",
+                                    dedupeId = "${action}_$targetUid"
+                                )
+                                onSuccess()
+                            }
+                            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to update permission") }
+                    }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load user") }
+            },
+            onFailure = onFailure
+        )
+    }
+
+    private fun requestDocRef(request: StudioRequest) =
+        if (request.sourceCollection == StudioRequest.SOURCE_LEGACY_STUDIO_CLAIMS) {
+            db.collection(Constants.Collections.STUDIO_CLAIMS).document(request.requestId)
+        } else {
+            db.collection(Constants.Collections.STUDIO_REQUESTS).document(request.requestId)
+        }
+
+    private fun notifyStudioRequestDecision(request: StudioRequest, adminUid: String, approved: Boolean) {
+        val title = if (request.type == StudioRequest.TYPE_CREATE) "Studio request" else "Studio claim"
+        val statusText = if (approved) "approved" else "rejected"
+        notificationRepository.createNotification(
+            recipientUid = request.requesterUid,
+            type = if (approved) InAppNotification.Types.PROFESSIONAL_APPROVED else InAppNotification.Types.PROFESSIONAL_REJECTED,
+            actorId = adminUid,
+            title = "$title $statusText",
+            message = "Your request for ${request.draftDisplayName.ifBlank { request.studioName }.ifBlank { "a studio" }} was $statusText.",
+            dedupeId = "studio_request_${request.requestId}_$statusText"
+        )
+    }
+
+    private fun permissionGrantMap(
+        grantId: String,
+        adminUid: String,
+        targetUid: String,
+        targetName: String,
+        action: String,
+        studioId: String,
+        note: String
+    ): Map<String, Any> {
+        return mapOf(
+            "grantId" to grantId,
+            "adminUid" to adminUid,
+            "targetUid" to targetUid,
+            "targetName" to targetName,
+            "action" to action,
+            "studioId" to studioId,
+            "note" to note,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+    }
+
+    private fun fullNameFrom(document: DocumentSnapshot): String {
+        return listOf(document.getString("firstName").orEmpty(), document.getString("lastName").orEmpty())
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
     }
 
     private fun ensureAdmin(
@@ -375,7 +787,7 @@ class AdminRepository {
             }
     }
 
-    private fun professionalApprovalUpdates(applicationType: String): Map<String, Any> {
+    private fun professionalApprovalUpdates(applicationType: String): Map<String, Any>? {
         return when {
             applicationType.equals(Constants.ProfessionalApplicationType.VERIFIED_TEACHER.firestoreValue, ignoreCase = true) -> {
                 mapOf(
@@ -389,13 +801,13 @@ class AdminRepository {
                     "professionalBadges" to FieldValue.arrayUnion("Choreographer")
                 )
             }
-            else -> {
-                mapOf(
-                    "role" to Constants.UserRole.STUDIO_MANAGER.firestoreValue,
-                    "professionalBadges" to FieldValue.arrayUnion("Studio / Dance School")
-                )
-            }
+            else -> null
         }
+    }
+
+    private fun isLegacyStudioApplication(applicationType: String): Boolean {
+        @Suppress("DEPRECATION")
+        return applicationType.equals(Constants.ProfessionalApplicationType.STUDIO.firestoreValue, ignoreCase = true)
     }
 
     private fun notifyProfessionalApplication(
@@ -434,7 +846,7 @@ class AdminRepository {
     }
 
     data class AdminReviewData(
-        val studioClaims: List<StudioClaim> = emptyList(),
+        val studioRequests: List<StudioRequest> = emptyList(),
         val professionalApplications: List<ProfessionalApplication> = emptyList(),
         val contentReports: List<ContentReport> = emptyList(),
         val warnings: List<String> = emptyList()

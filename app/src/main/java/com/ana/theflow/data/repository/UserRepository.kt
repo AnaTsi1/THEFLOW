@@ -3,9 +3,14 @@ package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.data.recommendation.RecommendationNormalizer
+import com.ana.theflow.data.recommendation.RecommendationProfile
+import com.ana.theflow.data.recommendation.RecommendationScoreMetadata
+import com.ana.theflow.data.recommendation.RecommendationScoreMath
 import com.ana.theflow.utilities.CityOptions
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -17,12 +22,12 @@ class UserRepository {
     private val db = FirebaseFirestore.getInstance()
     private val notificationRepository = NotificationRepository()
 
-    // Creates a Firestore profile for a new user.
+    // Creates a Firestore profile for a new user. Every new account is simply a dancer -
+    // professional and studio-manager permissions are always granted later by an admin.
     fun createUserProfile(
         firstName: String,
         lastName: String,
         email: String,
-        role: Constants.UserRole,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -37,7 +42,7 @@ class UserRepository {
             firstName = firstName,
             lastName = lastName,
             email = email,
-            role = role.firestoreValue,
+            role = Constants.UserRole.DANCER.firestoreValue,
             onboardingCompleted = false
         )
 
@@ -211,6 +216,35 @@ class UserRepository {
             }
     }
 
+    fun loadRecommendationProfile(
+        onSuccess: (RecommendationProfile) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            onFailure("User is not logged in")
+            return
+        }
+
+        val userRef = db.collection(Constants.Collections.USERS).document(uid)
+        userRef.get()
+            .addOnSuccessListener { userDocument ->
+                val user = userDocument.toObject(User::class.java)?.copy(uid = userDocument.id)
+                userRef.collection("recommendationProfile")
+                    .document("main")
+                    .get()
+                    .addOnSuccessListener { profileDocument ->
+                        onSuccess(profileDocument.toRecommendationProfile(uid, user))
+                    }
+                    .addOnFailureListener { error ->
+                        onFailure(error.message ?: "Failed to load recommendation profile")
+                    }
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load user profile")
+            }
+    }
+
     // Updates recommendation preferences for the current user.
     fun updatePreferenceSettings(
         styles: List<String>,
@@ -247,6 +281,31 @@ class UserRepository {
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to update preferences")
+            }
+    }
+
+    // Updates profile fields for a user.
+    fun updateUserFields(
+        uid: String,
+        updates: Map<String, Any>,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (uid.isBlank()) {
+            onFailure("Missing user id")
+            return
+        }
+        if (updates.isEmpty()) {
+            onSuccess()
+            return
+        }
+
+        db.collection(Constants.Collections.USERS)
+            .document(uid)
+            .update(updates)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to update profile")
             }
     }
 
@@ -644,13 +703,93 @@ class UserRepository {
             .orEmpty()
     }
 
-    // Chooses the existing follow collection used by the following feed.
-    private fun followingCollectionFor(user: User): String {
-        return when {
-            user.role.equals(Constants.UserRole.STUDIO_MANAGER.firestoreValue, ignoreCase = true) -> "followingStudios"
-            user.verifiedTeacher || user.verifiedChoreographer -> "followingTeachers"
-            else -> "followingDancers"
+    private fun DocumentSnapshot.toRecommendationProfile(uid: String, user: User?): RecommendationProfile {
+        val preferredStyles = stringList(get("preferredStyles"))
+        val preferredLevel = getString("preferredLevel").orEmpty()
+        val preferredLocation = CityOptions.normalizeOptionalCity(getString("preferredLocation").orEmpty()).orEmpty()
+        val profileLocation = CityOptions.normalizeOptionalCity(user?.location.orEmpty()).orEmpty().ifBlank { user?.location.orEmpty() }
+        val metadata = scoreMetadataMap()
+        return RecommendationProfile(
+            userId = uid,
+            danceStyles = preferredStyles.ifEmpty { user?.danceStyles.orEmpty() },
+            danceLevel = preferredLevel.ifBlank { user?.danceLevel.orEmpty() },
+            profileLocation = profileLocation,
+            preferredRecommendationArea = preferredLocation.ifBlank { profileLocation },
+            styleScores = effectiveScoreMap("styleScores", ::normalizeStyleKey, metadata),
+            locationScores = effectiveScoreMap("locationScores", ::normalizeLocationKey, metadata),
+            studioScores = effectiveScoreMap("studioScores", RecommendationNormalizer::id, metadata),
+            teacherScores = effectiveScoreMap("teacherScores", RecommendationNormalizer::id, metadata),
+            creatorScores = effectiveScoreMap("creatorScores", RecommendationNormalizer::id, metadata),
+            creatorTypeScores = effectiveScoreMap("creatorTypeScores", RecommendationNormalizer::creatorTypeId, metadata),
+            contentTypeScores = effectiveScoreMap("contentTypeScores", RecommendationNormalizer::contentTypeId, metadata),
+            targetTypeScores = effectiveScoreMap("targetTypeScores", RecommendationNormalizer::contentTypeId, metadata),
+            levelScores = effectiveScoreMap("levelScores", RecommendationNormalizer::levelId, metadata),
+            mediaTypeScores = effectiveScoreMap("mediaTypeScores", RecommendationNormalizer::contentTypeId, metadata),
+            scoreMetadata = metadata,
+            savedItemIds = stringList(get("savedItemIds")).toSet(),
+            interactedItemIds = stringList(get("interactedItemIds")).toSet(),
+            hiddenItemIds = stringList(get("hiddenItemIds")).toSet(),
+            registeredEventIds = stringList(get("registeredEventIds")).toSet(),
+            seenItemIds = stringList(get("seenItemIds")).toSet()
+        )
+    }
+
+    private fun DocumentSnapshot.effectiveScoreMap(
+        field: String,
+        normalizeKey: (String) -> String,
+        metadata: Map<String, RecommendationScoreMetadata>
+    ): Map<String, Double> {
+        val scores = normalizedScoreMap(field, normalizeKey).toMutableMap()
+        val prefix = "${field}_"
+        metadata.forEach { (metadataKey, metadataValue) ->
+            if (metadataKey.startsWith(prefix)) {
+                val key = metadataKey.removePrefix(prefix)
+                scores[key] = RecommendationScoreMath.decayed(metadataValue.score, metadataValue.lastUpdatedMillis)
+            }
         }
+        return scores
+    }
+
+    private fun DocumentSnapshot.normalizedScoreMap(
+        field: String,
+        normalizeKey: (String) -> String
+    ): Map<String, Double> {
+        val value = get(field) as? Map<*, *> ?: return emptyMap()
+        return value.mapNotNull { (key, score) ->
+            val rawKey = key as? String ?: return@mapNotNull null
+            val number = score as? Number ?: (score as? Map<*, *>)?.get("score") as? Number ?: return@mapNotNull null
+            normalizeKey(rawKey).takeIf { it.isNotBlank() && it != "unknown" }?.let { it to number.toDouble() }
+        }.toMap()
+    }
+
+    private fun DocumentSnapshot.scoreMetadataMap(): Map<String, RecommendationScoreMetadata> {
+        val value = get("scoreMetadata") as? Map<*, *> ?: return emptyMap()
+        return value.mapNotNull { (key, rawMetadata) ->
+            val rawKey = key as? String ?: return@mapNotNull null
+            val metadata = rawMetadata as? Map<*, *> ?: return@mapNotNull null
+            rawKey to RecommendationScoreMetadata(
+                score = (metadata["score"] as? Number)?.toDouble() ?: 0.0,
+                lastUpdatedMillis = (metadata["lastUpdatedMillis"] as? Number)?.toLong() ?: 0L,
+                interactionCount = (metadata["interactionCount"] as? Number)?.toInt() ?: 0,
+                confidence = (metadata["confidence"] as? Number)?.toDouble() ?: 0.0,
+                positiveCount = (metadata["positiveCount"] as? Number)?.toInt() ?: 0,
+                negativeCount = (metadata["negativeCount"] as? Number)?.toInt() ?: 0
+            )
+        }.toMap()
+    }
+
+    private fun normalizeStyleKey(value: String): String = RecommendationNormalizer.styleId(value)
+
+    private fun normalizeLocationKey(value: String): String {
+        return CityOptions.normalizeCityId(value) ?: RecommendationNormalizer.id(value)
+    }
+
+    // Chooses the existing follow collection used by the following feed.
+    // A manager is still a person - following them follows the dancer/teacher, never
+    // "followingStudios" (that edge is for following the studio business account itself, see
+    // StudioRepository.toggleFollowStudio).
+    private fun followingCollectionFor(user: User): String {
+        return if (user.verifiedTeacher || user.verifiedChoreographer) "followingTeachers" else "followingDancers"
     }
 
     // Builds a compact target document for the current user's following collection.
@@ -789,10 +928,14 @@ class UserRepository {
                         }
                     }
                 },
-                onFailure = { error ->
+                onFailure = {
+                    // Skip ids that no longer resolve (e.g. a deleted account) instead of failing the whole list.
                     if (!completed) {
-                        completed = true
-                        onFailure(error)
+                        pendingLoads -= 1
+                        if (pendingLoads == 0) {
+                            completed = true
+                            onSuccess(users.sortedBy { order[it.uid] ?: Int.MAX_VALUE })
+                        }
                     }
                 }
             )

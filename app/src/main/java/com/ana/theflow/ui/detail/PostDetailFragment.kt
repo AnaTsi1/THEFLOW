@@ -200,7 +200,8 @@ class PostDetailFragment : Fragment() {
             },
             onAuthorOpen = { authorId ->
                 (requireActivity() as MainActivity).openUserProfile(authorId)
-            }
+            },
+            onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) }
         )
     }
 
@@ -627,7 +628,6 @@ class PostDetailFragment : Fragment() {
         postRepository.toggleSave(
             post = post,
             onSuccess = { isSaved ->
-                if (isSaved) activityTrackingRepository.trackPostSaved(post)
                 detailSaved = isSaved
                 renderCurrentDetail()
             },

@@ -36,6 +36,8 @@ class SettingsFragment : Fragment() {
         binding.settingsLAYCategories.addView(SettingsUi.row(context, "Privacy and Safety", "Message privacy, blocked users, visibility, and safety controls.", onClick = activity::openPrivacySafetySettings))
         binding.settingsLAYCategories.addView(SettingsUi.row(context, "Appearance", "Theme, language, and display options.", onClick = activity::openAppearanceSettings))
         binding.settingsLAYCategories.addView(SettingsUi.row(context, "Help and About", "Help, report a problem, guidelines, legal, and app version.", onClick = activity::openHelpAboutSettings))
+        binding.settingsLAYCategories.addView(SettingsUi.row(context, "Create a studio page", "Request a new business account for your studio.", onClick = { activity.openStudioRequest(mode = "create") }))
+        binding.settingsLAYCategories.addView(SettingsUi.row(context, "Claim an existing studio", "Find your studio in Search, then tap Claim Studio on its page.", onClick = { activity.openSearch() }))
     }
 
     override fun onDestroyView() {

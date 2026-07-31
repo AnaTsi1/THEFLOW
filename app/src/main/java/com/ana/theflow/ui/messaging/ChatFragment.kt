@@ -154,7 +154,7 @@ class ChatFragment : Fragment() {
         }
         row.addView(TextView(context).apply {
             text = message.text
-            setTextColor(context.getColor(R.color.text_primary))
+            setTextColor(context.getColor(if (isMine) R.color.white else R.color.flow_ink))
             textSize = if (isEmojiOnly(message.text)) 28f else 15f
             setLineSpacing(2.dp().toFloat(), 1f)
             setBackgroundResource(if (isMine) R.drawable.bg_bubble_sent else R.drawable.bg_bubble_received)

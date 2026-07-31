@@ -19,7 +19,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Messages"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_ink"
             android:textSize="25sp"
             android:textStyle="bold" />
 
@@ -27,7 +27,7 @@
             android:id="@+id/conversations_BTN_new"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
-            android:background="@drawable/bg_icon_button_compact"
+            android:background="@drawable/bg_flow_button_secondary"
             android:contentDescription="New message"
             android:gravity="center"
             android:paddingStart="14dp"
@@ -51,9 +51,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:background="@drawable/bg_card"
+        android:background="@drawable/bg_flow_card"
+        android:padding="14dp"
         android:text="No conversations yet."
-        android:textColor="@color/text_secondary"
+        android:textColor="@color/flow_text_secondary"
         android:textSize="14sp"
         android:visibility="gone" />
 

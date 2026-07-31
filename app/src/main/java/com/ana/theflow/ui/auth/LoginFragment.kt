@@ -8,14 +8,12 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import com.ana.theflow.databinding.FragmentLoginBinding
-import com.ana.theflow.utilities.Constants
 
 class LoginFragment : Fragment() {
 
     private var _binding: FragmentLoginBinding? = null
     private val binding get() = _binding!!
     private val authViewModel: AuthViewModel by activityViewModels()
-    private var selectedRole = Constants.UserRole.DANCER
 
     // Creates and returns the fragment view.
     override fun onCreateView(
@@ -48,21 +46,6 @@ class LoginFragment : Fragment() {
 
     // Connects buttons to their click actions.
     private fun setupClickListeners() {
-        binding.loginBTNDancer.setOnClickListener {
-            selectedRole = Constants.UserRole.DANCER
-            renderRoleSelection()
-        }
-
-        binding.loginBTNStudioManager.setOnClickListener {
-            selectedRole = Constants.UserRole.STUDIO_MANAGER
-            renderRoleSelection()
-        }
-
-        binding.loginBTNAdmin.setOnClickListener {
-            selectedRole = Constants.UserRole.ADMIN
-            renderRoleSelection()
-        }
-
         binding.loginBTNLogin.setOnClickListener {
             loginUser()
         }
@@ -78,34 +61,11 @@ class LoginFragment : Fragment() {
         authViewModel.login(
             email = binding.loginEDTEmail.text.toString().trim(),
             password = binding.loginEDTPassword.text.toString(),
-            selectedRole = selectedRole,
             onSuccess = {
                 Toast.makeText(requireContext(), "Signed in successfully", Toast.LENGTH_SHORT).show()
                 (requireActivity() as LoginActivity).routeSignedInUser()
             }
         )
-    }
-
-    // Updates the role selection buttons.
-    private fun renderRoleSelection() {
-        val dancerSelected = selectedRole == Constants.UserRole.DANCER
-        val studioSelected = selectedRole == Constants.UserRole.STUDIO_MANAGER
-        val adminSelected = selectedRole == Constants.UserRole.ADMIN
-        binding.loginBTNDancer.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
-        )
-        binding.loginBTNStudioManager.setBackgroundResource(
-            if (studioSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
-        )
-        binding.loginBTNAdmin.setBackgroundResource(
-            if (adminSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
-        )
-        binding.loginBTNDancer.setTextColor(requireContext().getColor(if (dancerSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
-        binding.loginBTNStudioManager.setTextColor(requireContext().getColor(if (studioSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
-        binding.loginBTNAdmin.setTextColor(requireContext().getColor(if (adminSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
-        binding.loginBTNDancer.setTypeface(null, if (dancerSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-        binding.loginBTNStudioManager.setTypeface(null, if (studioSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-        binding.loginBTNAdmin.setTypeface(null, if (adminSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
     }
 
     // Clears the fragment binding when the view is destroyed.

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.data.recommendation.RecommendationProfile
 
 class DiscoverSearchViewModel : ViewModel() {
     val state = SearchUiState()
@@ -47,7 +48,8 @@ data class SearchUiState(
     var mapLatitude: Double? = null,
     var mapLongitude: Double? = null,
     var mapZoom: Float? = null,
-    var userMovedMap: Boolean = false
+    var userMovedMap: Boolean = false,
+    var recommendationProfile: RecommendationProfile = RecommendationProfile.empty()
 )
 
 data class SearchFilters(

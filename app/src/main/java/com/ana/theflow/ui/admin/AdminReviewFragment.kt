@@ -9,11 +9,13 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.professional.ProfessionalApplication
 import com.ana.theflow.data.model.report.ContentReport
-import com.ana.theflow.data.model.studio.StudioClaim
+import com.ana.theflow.data.model.studio.StudioRequest
 import com.ana.theflow.data.repository.AdminRepository
 import com.ana.theflow.databinding.FragmentAdminReviewBinding
 import com.ana.theflow.utilities.Constants
@@ -36,6 +38,9 @@ class AdminReviewFragment : Fragment() {
         binding.adminBTNRefresh.setOnClickListener {
             loadPendingReviews()
         }
+        binding.adminBTNPermissions.setOnClickListener {
+            (requireActivity() as MainActivity).openAdminUserPermissions()
+        }
         loadPendingReviews()
     }
 
@@ -47,12 +52,13 @@ class AdminReviewFragment : Fragment() {
 
         adminRepository.loadPendingReviews(
             onSuccess = { data ->
+                if (!isAdded) return@loadPendingReviews
                 setLoading(false)
-                renderStudioClaims(data.studioClaims)
+                renderStudioRequests(data.studioRequests)
                 renderProfessionalApplications(data.professionalApplications)
                 renderContentReports(data.contentReports)
 
-                val total = data.studioClaims.size + data.professionalApplications.size + data.contentReports.size
+                val total = data.studioRequests.size + data.professionalApplications.size + data.contentReports.size
                 val statusMessage = if (total == 0) {
                     "No pending requests right now."
                 } else {
@@ -65,6 +71,7 @@ class AdminReviewFragment : Fragment() {
                 binding.adminLBLMessage.visibility = View.VISIBLE
             },
             onFailure = { error ->
+                if (!isAdded) return@loadPendingReviews
                 setLoading(false)
                 binding.adminLBLMessage.text = error
                 binding.adminLBLMessage.visibility = View.VISIBLE
@@ -72,28 +79,45 @@ class AdminReviewFragment : Fragment() {
         )
     }
 
-    private fun renderStudioClaims(claims: List<StudioClaim>) {
-        if (claims.isEmpty()) {
-            binding.adminLAYStudioClaims.addView(emptyText("No pending studio claims."))
+    private fun renderStudioRequests(requests: List<StudioRequest>) {
+        if (requests.isEmpty()) {
+            binding.adminLAYStudioClaims.addView(emptyText("No pending studio requests."))
             return
         }
 
-        claims.forEach { claim ->
+        requests.forEach { request ->
+            val isCreate = request.type == StudioRequest.TYPE_CREATE
+            val title = (if (isCreate) request.draftDisplayName else request.studioName)
+                .ifBlank { if (isCreate) "New studio request" else "Studio claim" }
+            val body = if (isCreate) {
+                listOf(
+                    "Type: Create new studio",
+                    "Requester: ${request.requesterName.ifBlank { request.requesterEmail }}",
+                    "City: ${request.draftCity.ifBlank { "Not provided" }}",
+                    "Address: ${request.draftAddress.ifBlank { "Not provided" }}",
+                    "Bio: ${request.draftBio.ifBlank { "Not provided" }}",
+                    "Why: ${request.justification.ifBlank { "Not provided" }}"
+                ).joinToString("\n")
+            } else {
+                listOf(
+                    "Type: Claim existing studio",
+                    "Requester: ${request.requesterName.ifBlank { request.requesterEmail }}",
+                    "Email: ${request.requesterEmail}",
+                    "Why: ${request.justification.ifBlank { "Not provided" }}",
+                    "Verification: ${request.verificationDetails.ifBlank { "Not provided" }}"
+                ).joinToString("\n")
+            }
+
             binding.adminLAYStudioClaims.addView(
                 reviewCard(
-                    title = claim.studioName.ifBlank { "Studio claim" },
-                    body = listOf(
-                        "Requester: ${claim.requesterName.ifBlank { claim.requesterEmail }}",
-                        "Email: ${claim.requesterEmail}",
-                        "Why: ${claim.justification.ifBlank { "Not provided" }}",
-                        "Verification: ${claim.verificationDetails.ifBlank { "Not provided" }}"
-                    ).joinToString("\n"),
+                    title = title,
+                    body = body,
                     onApprove = {
                         setLoading(true)
-                        adminRepository.approveStudioClaim(
-                            claim = claim,
+                        adminRepository.approveStudioRequest(
+                            request = request,
                             onSuccess = {
-                                Toast.makeText(requireContext(), "Studio claim approved", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(requireContext(), "Studio request approved", Toast.LENGTH_SHORT).show()
                                 loadPendingReviews()
                             },
                             onFailure = ::showActionError
@@ -101,10 +125,10 @@ class AdminReviewFragment : Fragment() {
                     },
                     onReject = {
                         setLoading(true)
-                        adminRepository.rejectStudioClaim(
-                            claim = claim,
+                        adminRepository.rejectStudioRequest(
+                            request = request,
                             onSuccess = {
-                                Toast.makeText(requireContext(), "Studio claim rejected", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(requireContext(), "Studio request rejected", Toast.LENGTH_SHORT).show()
                                 loadPendingReviews()
                             },
                             onFailure = ::showActionError
@@ -253,7 +277,13 @@ class AdminReviewFragment : Fragment() {
             setTypeface(null, Typeface.BOLD)
             setBackgroundResource(R.drawable.bg_button_primary)
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
-            setOnClickListener { onApprove() }
+            setOnClickListener {
+                AlertDialog.Builder(context)
+                    .setMessage("$approveText this request?")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton(approveText) { _, _ -> onApprove() }
+                    .show()
+            }
         })
 
         actions.addView(Button(context).apply {
@@ -293,6 +323,7 @@ class AdminReviewFragment : Fragment() {
     }
 
     private fun showActionError(error: String) {
+        if (!isAdded) return
         setLoading(false)
         Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
     }

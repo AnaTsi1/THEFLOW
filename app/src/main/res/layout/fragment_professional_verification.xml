@@ -82,7 +82,7 @@
                 android:layout_height="54dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_button_secondary"
-                android:text="Request Studio / Dance School"
+                android:text="Create or claim a studio"
                 android:textColor="@color/text_primary" />
 
             <TextView

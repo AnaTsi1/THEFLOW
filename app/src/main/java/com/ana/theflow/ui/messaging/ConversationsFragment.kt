@@ -97,7 +97,7 @@ class ConversationsFragment : Fragment() {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundResource(if (unreadCount > 0) R.drawable.bg_card_highlight else R.drawable.bg_post_card)
+            setBackgroundResource(if (unreadCount > 0) R.drawable.bg_flow_event_panel else R.drawable.bg_flow_card)
             setPadding(12.dp(), 12.dp(), 12.dp(), 12.dp())
             isClickable = true
             isFocusable = true
@@ -131,7 +131,7 @@ class ConversationsFragment : Fragment() {
                 text = other?.name?.ifBlank { "Dancer" } ?: "Dancer"
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setTextColor(context.getColor(R.color.text_primary))
+                setTextColor(context.getColor(R.color.flow_ink))
                 textSize = 15f
                 setTypeface(typeface, if (unreadCount > 0) Typeface.BOLD else Typeface.NORMAL)
             })
@@ -139,7 +139,7 @@ class ConversationsFragment : Fragment() {
                 text = conversation.lastMessage.ifBlank { "No messages yet" }
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setTextColor(context.getColor(if (unreadCount > 0) R.color.text_secondary else R.color.text_muted))
+                setTextColor(context.getColor(if (unreadCount > 0) R.color.flow_ink else R.color.flow_text_secondary))
                 textSize = 13f
                 setPadding(0, 4.dp(), 0, 0)
             })
@@ -150,7 +150,7 @@ class ConversationsFragment : Fragment() {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             addView(TextView(context).apply {
                 text = formatTime(conversation)
-                setTextColor(context.getColor(R.color.text_muted))
+                setTextColor(context.getColor(R.color.flow_text_muted))
                 textSize = 11f
             })
             if (unreadCount > 0) {
