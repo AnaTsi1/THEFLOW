@@ -22,6 +22,7 @@ import androidx.fragment.app.Fragment
 import com.bumptech.glide.Glide
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
 import com.ana.theflow.data.model.post.PostMediaItem
@@ -33,6 +34,7 @@ import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.ReportRepository
 import com.ana.theflow.data.repository.StorageRepository
 import com.ana.theflow.data.repository.UserRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.databinding.FragmentProfileBinding
 import com.ana.theflow.ui.common.PostCardRenderer
 import com.ana.theflow.ui.common.ResponsiveLayout
@@ -61,28 +63,24 @@ class ProfileFragment : Fragment() {
     private var pendingPostMediaUri: Uri? = null
     private var pendingPostMediaType: String = MEDIA_TYPE_NONE
     private var selectedComposerMode = ComposerMode.REGULAR
+    private var selectedProfileTab = ProfileTab.POSTS
+    private var selectedMediaFilter = MediaFilter.ALL
+    private var profilePosts: List<Post> = emptyList()
+    private var profileMediaItemsCache: List<ProfileMediaItem> = emptyList()
+    private var registeredEvents: List<Post> = emptyList()
+    private var tabsPinnedTop = 0
 
     private val profilePhotoPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        pendingProfilePhotoUri = uri
-        binding.profileBTNProfilePhoto.text = if (uri == null) {
-            "Choose Profile Photo"
-        } else {
-            "Profile Photo Selected"
-        }
+        if (uri != null) uploadProfilePhoto(uri)
     }
 
     private val coverImagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        pendingCoverImageUri = uri
-        binding.profileBTNCoverImage.text = if (uri == null) {
-            "Choose Cover Image"
-        } else {
-            "Cover Image Selected"
-        }
+        if (uri != null) uploadCoverImage(uri)
     }
 
     private val postMediaPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val mediaType = resolveMediaType(uri)
-        if (uri != null && mediaType == MEDIA_TYPE_MEDIA) {
+        if (uri != null && mediaType == MEDIA_TYPE_NONE) {
             pendingPostMediaUri = null
             pendingPostMediaType = MEDIA_TYPE_NONE
             binding.profileLBLSelectedMedia.visibility = View.GONE
@@ -107,9 +105,9 @@ class ProfileFragment : Fragment() {
 
     // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        (binding.root as? android.widget.ScrollView)?.getChildAt(0)?.let {
-            ResponsiveLayout.constrainToReadableWidth(it)
-        }
+        selectedProfileTab = savedInstanceState?.getString(KEY_SELECTED_TAB)?.let { ProfileTab.valueOf(it) } ?: selectedProfileTab
+        selectedMediaFilter = savedInstanceState?.getString(KEY_MEDIA_FILTER)?.let { MediaFilter.valueOf(it) } ?: selectedMediaFilter
+        ResponsiveLayout.constrainToReadableWidth(binding.profileLAYRootContent)
         ResponsiveLayout.ensureTouchTarget(
             binding.profileBTNSettings,
             binding.profileBTNMore,
@@ -118,6 +116,18 @@ class ProfileFragment : Fragment() {
         )
         binding.profileBTNEdit.setOnClickListener {
             (requireActivity() as MainActivity).openEditProfile()
+        }
+        binding.profileIMGAvatar.setOnClickListener {
+            if (isOwnProfile) profilePhotoPicker.launch("image/*")
+        }
+        binding.profileIMGCover.setOnClickListener {
+            if (isOwnProfile) coverImagePicker.launch("image/*")
+        }
+        binding.profileLBLAbout.setOnClickListener {
+            if (isOwnProfile) showEditBioDialog()
+        }
+        binding.profileLBLSkills.setOnClickListener {
+            if (isOwnProfile) (requireActivity() as MainActivity).openEditProfile()
         }
         binding.profileBTNSettings.setOnClickListener {
             (requireActivity() as MainActivity).openSettings()
@@ -174,8 +184,16 @@ class ProfileFragment : Fragment() {
         binding.profileBTNCancelEdit.setOnClickListener {
             setEditMode(false)
         }
+        setupProfileTabs()
+        setupStickyTabs()
         configurePostComposer()
         loadProfile()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_SELECTED_TAB, selectedProfileTab.name)
+        outState.putString(KEY_MEDIA_FILTER, selectedMediaFilter.name)
     }
 
     // Loads the current user profile.
@@ -185,8 +203,12 @@ class ProfileFragment : Fragment() {
             Toast.makeText(requireContext(), "User is not logged in", Toast.LENGTH_SHORT).show()
             return
         }
-        profileUid = arguments?.getString(ARG_USER_ID).orEmpty().ifBlank { uid }
-        isOwnProfile = profileUid == uid
+        val argUid = arguments?.getString(ARG_USER_ID).orEmpty()
+        profileUid = argUid.ifBlank { uid }
+        // Only the personal account gets owner affordances here - if a studio account is active,
+        // your own personal profile should render as a normal (non-editable) profile, since
+        // "posting as" the studio, not yourself.
+        isOwnProfile = argUid.isBlank() && ActiveAccountHolder.current() is ActiveAccount.Personal
         loadViewerUser(uid)
 
         userRepository.getUserByUid(
@@ -196,6 +218,7 @@ class ProfileFragment : Fragment() {
                 renderProfile(user)
                 populateEditFields(user)
                 loadOwnPosts(user.uid)
+                if (isOwnProfile) loadRegisteredEvents()
                 activityTrackingRepository.trackViewProfile(
                     targetUserId = user.uid,
                     targetName = "${user.firstName} ${user.lastName}".trim()
@@ -211,48 +234,36 @@ class ProfileFragment : Fragment() {
     private fun renderProfile(user: User) {
         val fullName = "${user.firstName} ${user.lastName}".trim().ifBlank { "Dancer" }
         binding.profileLBLName.text = fullName
-        binding.profileLBLHeadline.text = user.headline
+        binding.profileLBLHeadline.text = listOf(
+            user.headline.ifBlank { user.role.cleanDisplayValue() },
+            user.location
+        ).filter { it.isNotBlank() }.joinToString(" / ")
         binding.profileLBLHeadline.visibility = if (user.headline.isBlank()) View.GONE else View.VISIBLE
         binding.profileLBLAbout.text = user.bio
         binding.profileLBLAbout.visibility = if (user.bio.isBlank()) View.GONE else View.VISIBLE
-
-        binding.profileLBLDetails.text = listOfNotNull(
-            line("Badges", user.professionalBadges.joinToString(", ")),
-            line("Background", user.professionalBackground),
-            line("Years", user.yearsOfExperience),
-            line("Studios", user.studiosTrainedAt.joinToString(", ")),
-            line("Teachers", user.teachersLearnedFrom.joinToString(", ")),
-            line("Performances", user.performancesCompetitions.joinToString(", ")),
-            line("Availability", user.availability),
-            line("Instagram", if (user.instagramUrl.isNotBlank()) "Available" else ""),
-            line("TikTok", if (user.tiktokUrl.isNotBlank()) "Available" else ""),
-            line("YouTube", if (user.youtubeUrl.isNotBlank()) "Available" else "")
-        ).joinToString("\n")
-        binding.profileLAYSections.visibility = if (
-            binding.profileLBLDetails.text.isBlank() && user.skills.isEmpty()
-        ) {
-            View.GONE
-        } else {
-            View.VISIBLE
-        }
-        binding.profileLBLDetails.visibility = if (binding.profileLBLDetails.text.isBlank()) View.GONE else View.VISIBLE
-        binding.profileLBLSkills.text = user.skills.joinToString(separator = " / ")
-        binding.profileLBLSkills.visibility = if (user.skills.isEmpty()) View.GONE else View.VISIBLE
+        binding.profileLBLHeadline.visibility = if (binding.profileLBLHeadline.text.isBlank()) View.GONE else View.VISIBLE
+        binding.profileLBLSkills.text = profileTags(user).joinToString(separator = "  /  ")
+        binding.profileLBLSkills.visibility = if (binding.profileLBLSkills.text.isBlank()) View.GONE else View.VISIBLE
 
         renderProfileImages(user)
         renderProfileActions()
         loadFollowCounts()
+        renderSelectedTab()
     }
 
     override fun onResume() {
         super.onResume()
         refreshProfileHeaderAfterEditIfNeeded()
+        if (_binding != null && profileUid.isNotBlank()) {
+            loadOwnPosts(profileUid)
+            if (isOwnProfile) loadRegisteredEvents()
+        }
     }
 
-    private fun refreshProfileHeaderAfterEditIfNeeded() {
+    private fun refreshProfileHeaderAfterEditIfNeeded(force: Boolean = false) {
         if (_binding == null || !isOwnProfile || profileUid.isBlank()) return
         val prefs = requireContext().getSharedPreferences(EditProfileFragment.PROFILE_EDIT_PREFS, android.content.Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(EditProfileFragment.PROFILE_EDIT_UPDATED, false)) return
+        if (!force && !prefs.getBoolean(EditProfileFragment.PROFILE_EDIT_UPDATED, false)) return
         prefs.edit().remove(EditProfileFragment.PROFILE_EDIT_UPDATED).apply()
         userRepository.getUserByUid(
             uid = profileUid,
@@ -289,6 +300,62 @@ class ProfileFragment : Fragment() {
         }
     }
 
+    private fun setupProfileTabs() {
+        binding.profileTABPosts.setOnClickListener { selectProfileTab(ProfileTab.POSTS) }
+        binding.profileTABMedia.setOnClickListener { selectProfileTab(ProfileTab.MEDIA) }
+        binding.profileTABEvents.setOnClickListener { selectProfileTab(ProfileTab.EVENTS) }
+        binding.profileTABAbout.setOnClickListener { selectProfileTab(ProfileTab.ABOUT) }
+        ResponsiveLayout.ensureTouchTarget(
+            binding.profileTABPosts,
+            binding.profileTABMedia,
+            binding.profileTABEvents,
+            binding.profileTABAbout
+        )
+    }
+
+    private fun setupStickyTabs() {
+        binding.profileLAYTabs.post {
+            tabsPinnedTop = binding.profileLAYTabs.top
+        }
+        binding.profileSCROLLRoot.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            val offset = (scrollY - tabsPinnedTop).coerceAtLeast(0)
+            binding.profileLAYTabs.translationY = offset.toFloat()
+            binding.profileLAYTabs.elevation = if (offset > 0) 8.dp().toFloat() else 0f
+            if (offset > 0) binding.profileLAYTabs.bringToFront()
+        }
+    }
+
+    private fun selectProfileTab(tab: ProfileTab) {
+        selectedProfileTab = tab
+        renderSelectedTab()
+    }
+
+    private fun renderSelectedTab() {
+        if (_binding == null) return
+        listOf(
+            ProfileTab.POSTS to Pair(binding.profileTABLBLPosts, binding.profileTABINDPosts),
+            ProfileTab.MEDIA to Pair(binding.profileTABLBLMedia, binding.profileTABINDMedia),
+            ProfileTab.EVENTS to Pair(binding.profileTABLBLEvents, binding.profileTABINDEvents),
+            ProfileTab.ABOUT to Pair(binding.profileTABLBLAbout, binding.profileTABINDAbout)
+        ).forEach { (tab, views) ->
+            val selected = selectedProfileTab == tab
+            views.first.setTextColor(requireContext().getColor(if (selected) R.color.flow_brand else R.color.flow_text_secondary))
+            views.second.visibility = if (selected) View.VISIBLE else View.INVISIBLE
+        }
+
+        binding.profileLAYPosts.visibility = if (selectedProfileTab == ProfileTab.POSTS) View.VISIBLE else View.GONE
+        binding.profileLBLPostsEmpty.visibility = View.GONE
+        binding.profileLAYMediaPanel.visibility = if (selectedProfileTab == ProfileTab.MEDIA) View.VISIBLE else View.GONE
+        binding.profileLAYSections.visibility = if (selectedProfileTab == ProfileTab.ABOUT) View.VISIBLE else View.GONE
+
+        when (selectedProfileTab) {
+            ProfileTab.POSTS -> renderPostsTab()
+            ProfileTab.MEDIA -> renderMediaTab()
+            ProfileTab.EVENTS -> renderEventsTab()
+            ProfileTab.ABOUT -> renderAboutTab()
+        }
+    }
+
     private fun showPublicProfileMenu() {
         val anchor = binding.profileBTNMore
         PopupMenu(requireContext(), anchor).apply {
@@ -318,6 +385,212 @@ class ProfileFragment : Fragment() {
                 },
                 getString(R.string.share)
             )
+        )
+    }
+
+    private fun showProfileEditMenu() {
+        val user = currentUser ?: return
+        val items = arrayOf(
+            "Bio",
+            "Dance Level",
+            "Dance Styles",
+            "Location",
+            "Professional Role",
+            "Skills",
+            "Experience",
+            "Availability",
+            "Social Links",
+            "Profile Photo",
+            "Cover Image"
+        )
+        AlertDialog.Builder(requireContext())
+            .setTitle("Edit profile")
+            .setItems(items) { _, index ->
+                when (items[index]) {
+                    "Bio" -> showEditBioDialog()
+                    "Dance Level" -> showLevelDialog(user)
+                    "Dance Styles" -> showDanceStylesDialog(user)
+                    "Location" -> showLocationDialog(user)
+                    "Professional Role" -> showSingleFieldDialog("Professional Role", "Save Role", user.headline, "headline")
+                    "Skills" -> showListFieldDialog("Skills", "Apply Skills", user.skills, "skills")
+                    "Experience" -> showSingleFieldDialog("Experience", "Save Experience", user.professionalBackground, "professionalBackground", minHeight = 120.dp())
+                    "Availability" -> showSingleFieldDialog("Availability", "Save Availability", user.availability, "availability")
+                    "Social Links" -> showSocialLinksDialog(user)
+                    "Profile Photo" -> profilePhotoPicker.launch("image/*")
+                    "Cover Image" -> coverImagePicker.launch("image/*")
+                }
+            }
+            .show()
+    }
+
+    private fun showEditBioDialog() {
+        val user = currentUser ?: return
+        val maxChars = 220
+        val input = editField("Bio", user.bio, minHeight = 110.dp()).apply {
+            filters = arrayOf(android.text.InputFilter.LengthFilter(maxChars))
+        }
+        val counter = TextView(requireContext()).apply {
+            text = "${user.bio.length.coerceAtMost(maxChars)} / $maxChars"
+            setTextColor(requireContext().getColor(R.color.flow_text_muted))
+            textSize = 12f
+            setPadding(4.dp(), 6.dp(), 0, 0)
+        }
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: android.text.Editable?) {
+                counter.text = "${s?.length ?: 0} / $maxChars"
+            }
+        })
+        showFocusedForm(
+            title = "Edit Bio",
+            content = listOf(input, counter),
+            positive = "Save Bio"
+        ) {
+            updateProfileFields(mapOf("bio" to input.text.toString().trim()))
+        }
+    }
+
+    private fun showLevelDialog(user: User) {
+        val levels = arrayOf("Beginner", "Intermediate", "Advanced", "Professional")
+        var selected = levels.indexOfFirst { it.equals(user.danceLevel, ignoreCase = true) }.coerceAtLeast(0)
+        AlertDialog.Builder(requireContext())
+            .setTitle("Choose Level")
+            .setSingleChoiceItems(levels, selected) { _, which -> selected = which }
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton("Save Level") { _, _ ->
+                updateProfileFields(mapOf("danceLevel" to levels[selected])) {
+                    updateRecommendationPreference(level = levels[selected])
+                }
+            }
+            .show()
+    }
+
+    private fun showDanceStylesDialog(user: User) {
+        val options = arrayOf("Hip Hop", "Heels", "Salsa", "Contemporary", "Afro", "Ballet")
+        val selected = options.map { option -> user.danceStyles.any { it.equals(option, ignoreCase = true) } }.toBooleanArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("Select Styles")
+            .setMultiChoiceItems(options, selected) { _, which, checked -> selected[which] = checked }
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton("Apply Styles") { _, _ ->
+                val styles = options.filterIndexed { index, _ -> selected[index] }
+                updateProfileFields(mapOf("danceStyles" to styles)) {
+                    updateRecommendationPreference(styles = styles)
+                }
+            }
+            .show()
+    }
+
+    private fun showLocationDialog(user: User) {
+        val input = AutoCompleteTextView(requireContext()).apply {
+            hint = "City"
+            setText(user.location, false)
+            setTextColor(context.getColor(R.color.flow_ink))
+            setHintTextColor(context.getColor(R.color.flow_text_muted))
+            setBackgroundResource(R.drawable.bg_flow_input)
+            setPadding(14.dp(), 0, 14.dp(), 0)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp())
+        }
+        CityOptions.configureCitySelector(requireContext(), input)
+        showFocusedForm("Edit Location", listOf(input), "Save Location") {
+            val city = CityOptions.normalizeOptionalCity(input.text.toString()).orEmpty()
+            updateProfileFields(mapOf("location" to city)) {
+                updateRecommendationPreference(location = city)
+            }
+        }
+    }
+
+    private fun showSingleFieldDialog(
+        title: String,
+        positive: String,
+        value: String,
+        fieldName: String,
+        minHeight: Int = 54.dp()
+    ) {
+        val input = editField(title, value, minHeight = minHeight)
+        showFocusedForm(title, listOf(input), positive) {
+            updateProfileFields(mapOf(fieldName to input.text.toString().trim()))
+        }
+    }
+
+    private fun showListFieldDialog(title: String, positive: String, values: List<String>, fieldName: String) {
+        val input = editField(title, values.joinToString(", "), minHeight = 54.dp())
+        showFocusedForm(title, listOf(input), positive) {
+            updateProfileFields(mapOf(fieldName to commaList(input.text.toString())))
+        }
+    }
+
+    private fun showSocialLinksDialog(user: User) {
+        val instagram = editField("Instagram", user.instagramUrl, 54.dp())
+        val tiktok = editField("TikTok", user.tiktokUrl, 54.dp())
+        val youtube = editField("YouTube", user.youtubeUrl, 54.dp())
+        showFocusedForm("Social Links", listOf(instagram, tiktok, youtube), "Save Links") {
+            updateProfileFields(
+                mapOf(
+                    "instagramUrl" to instagram.text.toString().trim(),
+                    "tiktokUrl" to tiktok.text.toString().trim(),
+                    "youtubeUrl" to youtube.text.toString().trim()
+                )
+            )
+        }
+    }
+
+    private fun showFocusedForm(
+        title: String,
+        content: List<View>,
+        positive: String,
+        onSave: () -> Unit
+    ) {
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20.dp(), 12.dp(), 20.dp(), 0)
+            content.forEach { addView(it) }
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setView(container)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(positive) { _, _ -> onSave() }
+            .show()
+    }
+
+    private fun updateProfileFields(updates: Map<String, Any>, afterSuccess: () -> Unit = {}) {
+        val uid = authRepository.getCurrentUserUid() ?: return
+        userRepository.updateUserFields(
+            uid = uid,
+            updates = updates,
+            onSuccess = {
+                afterSuccess()
+                refreshProfileHeaderAfterEditIfNeeded(force = true)
+                Toast.makeText(requireContext(), "Profile updated", Toast.LENGTH_SHORT).show()
+            },
+            onFailure = { error ->
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not update your profile."), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun updateRecommendationPreference(
+        styles: List<String>? = null,
+        level: String? = null,
+        location: String? = null
+    ) {
+        val user = currentUser ?: return
+        userRepository.loadPreferenceSettings(
+            onSuccess = { prefs ->
+                userRepository.updatePreferenceSettings(
+                    styles = styles ?: prefs.styles.ifEmpty { user.danceStyles },
+                    level = level ?: prefs.level.ifBlank { user.danceLevel },
+                    location = location ?: prefs.location.ifBlank { user.location },
+                    preferredStudios = prefs.preferredStudios,
+                    preferredTeachers = prefs.preferredTeachers,
+                    preferredDancers = prefs.preferredDancers,
+                    onSuccess = {},
+                    onFailure = {}
+                )
+            },
+            onFailure = {}
         )
     }
 
@@ -421,6 +694,11 @@ class ProfileFragment : Fragment() {
                 loadFollowCounts()
                 if (isFollowing) {
                     activityTrackingRepository.trackFollowUser(
+                        targetUserId = user.uid,
+                        targetName = "${user.firstName} ${user.lastName}".trim()
+                    )
+                } else {
+                    activityTrackingRepository.trackUnfollowUser(
                         targetUserId = user.uid,
                         targetName = "${user.firstName} ${user.lastName}".trim()
                     )
@@ -590,6 +868,56 @@ class ProfileFragment : Fragment() {
         }
 
         uploadCoverImageIfNeeded(uid, coverUri)
+    }
+
+    private fun uploadProfilePhoto(uri: Uri) {
+        val uid = authRepository.getCurrentUserUid() ?: return
+        val validationError = validateUpload(uri, UploadKind.IMAGE)
+        if (validationError != null) {
+            Toast.makeText(requireContext(), validationError, Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.profileBTNEdit.isEnabled = false
+        storageRepository.uploadProfileImage(
+            uid = uid,
+            imageUri = uri,
+            onSuccess = {
+                if (_binding == null) return@uploadProfileImage
+                binding.profileBTNEdit.isEnabled = true
+                refreshProfileHeaderAfterEditIfNeeded(force = true)
+                Toast.makeText(requireContext(), "Profile photo updated", Toast.LENGTH_SHORT).show()
+            },
+            onFailure = { error ->
+                if (_binding == null) return@uploadProfileImage
+                binding.profileBTNEdit.isEnabled = true
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not update your profile photo."), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun uploadCoverImage(uri: Uri) {
+        val uid = authRepository.getCurrentUserUid() ?: return
+        val validationError = validateUpload(uri, UploadKind.IMAGE)
+        if (validationError != null) {
+            Toast.makeText(requireContext(), validationError, Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.profileBTNEdit.isEnabled = false
+        storageRepository.uploadCoverImage(
+            uid = uid,
+            imageUri = uri,
+            onSuccess = {
+                if (_binding == null) return@uploadCoverImage
+                binding.profileBTNEdit.isEnabled = true
+                refreshProfileHeaderAfterEditIfNeeded(force = true)
+                Toast.makeText(requireContext(), "Cover image updated", Toast.LENGTH_SHORT).show()
+            },
+            onFailure = { error ->
+                if (_binding == null) return@uploadCoverImage
+                binding.profileBTNEdit.isEnabled = true
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not update your cover image."), Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     // Uploads a cover image when one was selected.
@@ -852,7 +1180,8 @@ class ProfileFragment : Fragment() {
         return when {
             mimeType.startsWith("video/") -> MEDIA_TYPE_VIDEO
             mimeType.startsWith("image/") -> MEDIA_TYPE_PHOTO
-            else -> MEDIA_TYPE_MEDIA
+            mimeType.startsWith("media/") -> MEDIA_TYPE_PHOTO
+            else -> MEDIA_TYPE_NONE
         }
     }
 
@@ -966,20 +1295,198 @@ class ProfileFragment : Fragment() {
 
     // Loads posts written by the current user.
     private fun loadOwnPosts(uid: String) {
+        binding.profilePROGRESSContent.visibility = View.VISIBLE
         binding.profileLAYPosts.removeAllViews()
         postRepository.loadPostsByAuthor(
             authorId = uid,
             onSuccess = { posts ->
-                binding.profileLBLPostsEmpty.visibility = if (posts.isEmpty()) View.VISIBLE else View.GONE
+                if (_binding == null) return@loadPostsByAuthor
+                binding.profilePROGRESSContent.visibility = View.GONE
+                profilePosts = posts
+                profileMediaItemsCache = collectProfileMediaItems(posts)
                 renderProfileMedia(posts)
-                posts.forEach { post ->
-                    renderOwnPostCard(post)
-                }
+                renderSelectedTab()
             },
             onFailure = { error ->
-                Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
+                if (_binding == null) return@loadPostsByAuthor
+                binding.profilePROGRESSContent.visibility = View.GONE
+                binding.profileLBLPostsEmpty.text = UiText.friendlyError(error, "We could not load this profile.")
+                binding.profileLBLPostsEmpty.visibility = View.VISIBLE
             }
         )
+    }
+
+    private fun loadRegisteredEvents() {
+        postRepository.loadRegisteredEventPosts(
+            onSuccess = { posts ->
+                if (_binding == null) return@loadRegisteredEventPosts
+                registeredEvents = posts
+                if (selectedProfileTab == ProfileTab.EVENTS) renderEventsTab()
+            },
+            onFailure = {
+                registeredEvents = emptyList()
+            }
+        )
+    }
+
+    private fun renderPostsTab() {
+        binding.profileLAYPosts.removeAllViews()
+        binding.profileLAYMediaPanel.visibility = View.GONE
+        binding.profileLAYSections.visibility = View.GONE
+        val posts = profilePosts.filterNot { it.postType == POST_TYPE_DANCE_ACTIVITY }
+        binding.profileLBLPostsEmpty.text = "No posts yet."
+        binding.profileLBLPostsEmpty.visibility = if (posts.isEmpty() && binding.profilePROGRESSContent.visibility != View.VISIBLE) View.VISIBLE else View.GONE
+        posts.forEach { post -> renderOwnPostCard(post) }
+    }
+
+    private fun renderEventsTab() {
+        binding.profileLAYPosts.removeAllViews()
+        binding.profileLAYPosts.visibility = View.VISIBLE
+        binding.profileLAYMediaPanel.visibility = View.GONE
+        binding.profileLAYSections.visibility = View.GONE
+        val createdEvents = profilePosts.filter { it.postType == POST_TYPE_DANCE_ACTIVITY }
+        val shown = linkedSetOf<String>()
+        val events = buildList {
+            addAll(createdEvents.distinctBy { it.postId }.also { it.forEach { post -> shown.add(post.postId) } })
+            if (isOwnProfile) addAll(registeredEvents.filter { shown.add(it.postId) })
+        }
+        binding.profileLBLPostsEmpty.text = if (isOwnProfile) {
+            "Events you create or join will appear here."
+        } else {
+            "No events shared yet."
+        }
+        binding.profileLBLPostsEmpty.visibility = if (events.isEmpty() && binding.profilePROGRESSContent.visibility != View.VISIBLE) View.VISIBLE else View.GONE
+        events.forEach { post ->
+            PostCardRenderer.addPostCard(
+                parent = binding.profileLAYPosts,
+                post = post,
+                isEventRegistered = registeredEvents.any { it.postId == post.postId },
+                currentUserId = authRepository.getCurrentUserUid().orEmpty(),
+                onOpen = { (requireActivity() as MainActivity).openPost(it.postId) },
+                onEventRegister = { toggleEventRegistration(it) },
+                onRepost = { repost(it) },
+                onMediaOpen = { url, mediaType -> (requireActivity() as MainActivity).openMediaViewer(url, mediaType) },
+                onAuthorOpen = { authorId -> (requireActivity() as MainActivity).openUserProfile(authorId) },
+                onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) },
+                cardStyle = PostCardRenderer.CardStyle.FLOW_LIGHT
+            )
+        }
+    }
+
+    private fun renderMediaTab() {
+        binding.profileLAYPosts.removeAllViews()
+        binding.profileLAYPosts.visibility = View.GONE
+        binding.profileLAYSections.visibility = View.GONE
+        binding.profileLAYMediaPanel.visibility = View.VISIBLE
+        renderMediaFilters()
+        binding.profileLAYMediaGrid.removeAllViews()
+        val items = filteredMediaItems()
+        binding.profileLBLPostsEmpty.text = "No media to show."
+        binding.profileLBLPostsEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        items.chunked(3).forEach { rowItems ->
+            binding.profileLAYMediaGrid.addView(LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = 8.dp() }
+                rowItems.forEach { media ->
+                    addView(createGridMediaTile(media))
+                }
+                repeat(3 - rowItems.size) {
+                    addView(View(requireContext()).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, 112.dp(), 1f).apply {
+                            leftMargin = 4.dp()
+                            rightMargin = 4.dp()
+                        }
+                    })
+                }
+            })
+        }
+    }
+
+    private fun renderMediaFilters() {
+        binding.profileLAYMediaFilters.removeAllViews()
+        MediaFilter.entries.forEach { filter ->
+            binding.profileLAYMediaFilters.addView(Button(requireContext()).apply {
+                text = filter.label
+                isAllCaps = false
+                minWidth = 0
+                setTextColor(context.getColor(if (selectedMediaFilter == filter) R.color.flow_surface else R.color.flow_brand))
+                setBackgroundResource(if (selectedMediaFilter == filter) R.drawable.bg_flow_button_primary else R.drawable.bg_flow_button_secondary)
+                layoutParams = LinearLayout.LayoutParams(0, 38.dp(), 1f).apply {
+                    rightMargin = 6.dp()
+                }
+                setOnClickListener {
+                    selectedMediaFilter = filter
+                    renderMediaTab()
+                }
+            })
+        }
+    }
+
+    private fun filteredMediaItems(): List<ProfileMediaItem> {
+        return when (selectedMediaFilter) {
+            MediaFilter.ALL -> profileMediaItemsCache
+            MediaFilter.PHOTOS -> profileMediaItemsCache.filterNot { it.item.mediaType == MEDIA_TYPE_VIDEO }
+            MediaFilter.VIDEOS -> profileMediaItemsCache.filter { it.item.mediaType == MEDIA_TYPE_VIDEO }
+        }
+    }
+
+    private fun createGridMediaTile(media: ProfileMediaItem): View {
+        return createMediaTile(media, compact = false).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 112.dp(), 1f).apply {
+                leftMargin = 4.dp()
+                rightMargin = 4.dp()
+            }
+        }
+    }
+
+    private fun renderAboutTab() {
+        val user = currentUser ?: return
+        binding.profileLAYPosts.removeAllViews()
+        binding.profileLAYPosts.visibility = View.GONE
+        binding.profileLAYMediaPanel.visibility = View.GONE
+        binding.profileLAYSections.visibility = View.VISIBLE
+        val aboutLines = listOfNotNull(
+            line("Role", user.role.cleanDisplayValue()),
+            line("Location", user.location),
+            line("Professional background", user.professionalBackground),
+            line("Dance styles", user.danceStyles.joinToString(", ")),
+            line("Level", user.danceLevel),
+            line("Skills", user.skills.joinToString(", ")),
+            line("Professional badges", user.professionalBadges.joinToString(", ")),
+            line("Years of experience", user.yearsOfExperience),
+            line("Studios", user.studiosTrainedAt.joinToString(", ")),
+            line("Teachers", user.teachersLearnedFrom.joinToString(", ")),
+            line("Performances / competitions", user.performancesCompetitions.joinToString(", ")),
+            line("Availability", user.availability),
+            line("Instagram", user.instagramUrl),
+            line("TikTok", user.tiktokUrl),
+            line("YouTube", user.youtubeUrl)
+        )
+        binding.profileLBLDetails.text = aboutLines.joinToString("\n\n")
+        binding.profileLBLDetails.visibility = if (aboutLines.isEmpty()) View.GONE else View.VISIBLE
+        binding.profileLBLPostsEmpty.text = "No profile details yet."
+        binding.profileLBLPostsEmpty.visibility = if (aboutLines.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun profileTags(user: User): List<String> {
+        return (user.danceStyles + user.danceLevel + user.skills + user.professionalBadges)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(10)
+    }
+
+    private fun collectProfileMediaItems(posts: List<Post>): List<ProfileMediaItem> {
+        return posts
+            .flatMap { post -> profileMediaItems(post) }
+            .filter { it.item.visibleInMedia && it.item.url.isNotBlank() }
+            .sortedWith(
+                compareByDescending<ProfileMediaItem> { it.item.pinned }
+                    .thenByDescending { it.item.uploadedAt }
+            )
     }
 
     // Renders one owned post with edit, like, comment, and media actions.
@@ -1073,6 +1580,7 @@ class ProfileFragment : Fragment() {
         isSaved: Boolean,
         isEventRegistered: Boolean
     ) {
+        if (selectedProfileTab != ProfileTab.POSTS) return
         PostCardRenderer.addPostCard(
             parent = binding.profileLAYPosts,
             post = post,
@@ -1093,6 +1601,7 @@ class ProfileFragment : Fragment() {
             onLike = { targetPost -> toggleLike(targetPost) },
             onSave = { targetPost -> toggleSave(targetPost) },
             onComment = { targetPost, text -> addComment(targetPost, text) },
+            onRepost = { targetPost -> repost(targetPost) },
             onEditComment = { comment, text -> updateComment(comment, text) },
             onDeleteComment = { comment -> deleteComment(comment) },
             onLikeComment = { comment -> toggleCommentLike(comment) },
@@ -1108,6 +1617,30 @@ class ProfileFragment : Fragment() {
             },
             onAuthorOpen = { authorId ->
                 (requireActivity() as MainActivity).openUserProfile(authorId)
+            },
+            onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) }
+        )
+    }
+
+    private fun repost(post: Post) {
+        val user = viewerUser
+        if (user == null) {
+            loadViewerUserThen { loadedUser -> createRepost(post, loadedUser) }
+            return
+        }
+        createRepost(post, user)
+    }
+
+    private fun createRepost(post: Post, user: User) {
+        postRepository.createRepost(
+            originalPost = post,
+            author = user,
+            onSuccess = {
+                Toast.makeText(requireContext(), "Shared to your feed", Toast.LENGTH_SHORT).show()
+                profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
+            },
+            onFailure = { error ->
+                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not share this post."), Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1216,8 +1749,9 @@ class ProfileFragment : Fragment() {
     private fun toggleEventRegistration(post: Post) {
         postRepository.toggleEventRegistration(
             post = post,
-            onSuccess = {
-                Toast.makeText(requireContext(), R.string.post_event_registered, Toast.LENGTH_SHORT).show()
+            onSuccess = { registered ->
+                Toast.makeText(requireContext(), if (registered) "Registered" else "Registration cancelled", Toast.LENGTH_SHORT).show()
+                if (isOwnProfile) loadRegisteredEvents()
                 profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
             },
             onFailure = { error ->
@@ -1287,7 +1821,6 @@ class ProfileFragment : Fragment() {
         postRepository.toggleSave(
             post = post,
             onSuccess = { isSaved ->
-                if (isSaved) activityTrackingRepository.trackPostSaved(post)
                 profileUid.takeIf { it.isNotBlank() }?.let { loadOwnPosts(it) }
             },
             onFailure = { error ->
@@ -1401,34 +1934,21 @@ class ProfileFragment : Fragment() {
 
     // Shows the profile media strip and full media panel.
     private fun renderProfileMedia(posts: List<Post>) {
-        val mediaItems = posts
-            .flatMap { post -> profileMediaItems(post) }
-            .filter { it.item.visibleInMedia && it.item.url.isNotBlank() }
-            .sortedWith(
-                compareByDescending<ProfileMediaItem> { it.item.pinned }
-                    .thenByDescending { it.item.uploadedAt }
-            )
+        val mediaItems = profileMediaItemsCache.ifEmpty { collectProfileMediaItems(posts) }
 
-        binding.profileLAYMediaSection.visibility = if (mediaItems.isEmpty()) View.GONE else View.VISIBLE
+        binding.profileLAYMediaSection.visibility = View.VISIBLE
+        binding.profileLBLMediaEmpty.visibility = if (mediaItems.isEmpty()) View.VISIBLE else View.GONE
         binding.profileLAYMediaStrip.removeAllViews()
-        binding.profileLAYMediaGrid.removeAllViews()
         if (mediaItems.isEmpty()) {
-            binding.profileLAYMediaPanel.visibility = View.GONE
             return
         }
 
         binding.profileBTNOpenMedia.setOnClickListener {
-            (requireActivity() as MainActivity).openProfileMedia()
-        }
-        binding.profileBTNCloseMedia.setOnClickListener {
-            binding.profileLAYMediaPanel.visibility = View.GONE
+            selectProfileTab(ProfileTab.MEDIA)
         }
 
         mediaItems.take(MEDIA_STRIP_LIMIT).forEach { media ->
             binding.profileLAYMediaStrip.addView(createMediaTile(media, compact = true))
-        }
-        mediaItems.forEach { media ->
-            binding.profileLAYMediaGrid.addView(createMediaTile(media, compact = false))
         }
     }
 
@@ -1487,28 +2007,41 @@ class ProfileFragment : Fragment() {
             }
         }
 
+        val imageView = ImageView(requireContext()).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        frame.addView(imageView)
+        Glide.with(this)
+            .load(media.item.url)
+            .centerCrop()
+            .into(imageView)
+
         if (media.item.mediaType == MEDIA_TYPE_VIDEO) {
-            frame.addView(createVideoLabel(compact))
-        } else {
-            val imageView = ImageView(requireContext()).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
+            frame.addView(ImageView(requireContext()).apply {
+                setImageResource(R.drawable.ic_play_24)
+                setColorFilter(requireContext().getColor(R.color.white))
+                setBackgroundResource(R.drawable.bg_play_button)
+                contentDescription = "Video"
+                setPadding(10.dp(), 10.dp(), 10.dp(), 10.dp())
                 layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
+                    if (compact) 38.dp() else 44.dp(),
+                    if (compact) 38.dp() else 44.dp(),
+                    android.view.Gravity.CENTER
                 )
-            }
-            frame.addView(imageView)
-            Glide.with(this)
-                .load(media.item.url)
-                .centerCrop()
-                .into(imageView)
+            })
         }
 
         if (media.item.pinned) {
             frame.addView(createPinnedLabel())
         }
 
-        frame.addView(createMediaMenuButton(media))
+        if (isOwnProfile && !compact) {
+            frame.addView(createMediaMenuButton(media))
+        }
         return frame
     }
 
@@ -1632,9 +2165,12 @@ class ProfileFragment : Fragment() {
         private const val MEDIA_TYPE_PHOTO = "photo"
         private const val MEDIA_TYPE_VIDEO = "video"
         private const val MEDIA_TYPE_MEDIA = "media"
+        private const val POST_TYPE_DANCE_ACTIVITY = "dance_activity"
         private const val MEDIA_STRIP_LIMIT = 8
         private const val MAX_IMAGE_UPLOAD_BYTES = 8L * 1024L * 1024L
         private const val MAX_VIDEO_UPLOAD_BYTES = 80L * 1024L * 1024L
+        private const val KEY_SELECTED_TAB = "selected_profile_tab"
+        private const val KEY_MEDIA_FILTER = "selected_media_filter"
 
         fun newInstance(uid: String): ProfileFragment {
             return ProfileFragment().apply {
@@ -1649,6 +2185,19 @@ class ProfileFragment : Fragment() {
         REGULAR("regular"),
         DANCE_ACTIVITY("dance_activity"),
         COLLABORATION("collaboration")
+    }
+
+    private enum class ProfileTab {
+        POSTS,
+        MEDIA,
+        EVENTS,
+        ABOUT
+    }
+
+    private enum class MediaFilter(val label: String) {
+        ALL("All"),
+        PHOTOS("Photos"),
+        VIDEOS("Videos")
     }
 
     private enum class UploadKind {
@@ -1667,4 +2216,17 @@ class ProfileFragment : Fragment() {
 // Converts dp units to pixels.
 private fun Int.dp(): Int {
     return (this * android.content.res.Resources.getSystem().displayMetrics.density).toInt()
+}
+
+private fun String.cleanDisplayValue(): String {
+    return trim()
+        .replace('_', ' ')
+        .replace('-', ' ')
+        .split(" ")
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { token ->
+            token.lowercase().replaceFirstChar { char ->
+                if (char.isLowerCase()) char.titlecase() else char.toString()
+            }
+        }
 }

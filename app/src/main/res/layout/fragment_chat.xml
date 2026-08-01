@@ -19,7 +19,7 @@
             android:id="@+id/chat_BTN_back"
             android:layout_width="38dp"
             android:layout_height="38dp"
-            android:background="@drawable/bg_icon_button_compact"
+            android:background="@drawable/bg_flow_icon_button"
             android:contentDescription="Back"
             android:padding="8dp"
             android:src="@drawable/ic_arrow_back_24" />
@@ -42,7 +42,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:text="Chat"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_ink"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -50,13 +50,13 @@
             android:id="@+id/chat_BTN_profile"
             android:layout_width="wrap_content"
             android:layout_height="34dp"
-            android:background="@drawable/bg_action_ghost"
+            android:background="@drawable/bg_flow_button_secondary"
             android:gravity="center"
             android:minWidth="0dp"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:text="Profile"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/flow_brand"
             android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -74,8 +74,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:background="@drawable/bg_card"
-        android:textColor="@color/text_secondary"
+        android:background="@drawable/bg_flow_card"
+        android:padding="14dp"
+        android:textColor="@color/flow_text_secondary"
         android:textSize="14sp"
         android:visibility="gone" />
 
@@ -109,7 +110,7 @@
             android:layout_width="38dp"
             android:layout_height="38dp"
             android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_icon_button_compact"
+            android:background="@drawable/bg_flow_icon_button"
             android:contentDescription="Emoji keyboard"
             android:padding="8dp"
             android:src="@drawable/ic_emoji_24" />
@@ -119,13 +120,13 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:background="@drawable/bg_input"
+            android:background="@drawable/bg_flow_input"
             android:hint="Message..."
             android:inputType="textMultiLine|textCapSentences"
             android:maxLines="5"
             android:minHeight="42dp"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_muted"
+            android:textColor="@color/flow_ink"
+            android:textColorHint="@color/flow_text_muted"
             android:textSize="14sp" />
 
         <ImageButton
@@ -133,9 +134,10 @@
             android:layout_width="38dp"
             android:layout_height="38dp"
             android:layout_marginStart="8dp"
-            android:background="@drawable/bg_icon_button_compact"
+            android:background="@drawable/bg_flow_button_primary"
             android:contentDescription="Send message"
             android:padding="8dp"
-            android:src="@drawable/ic_send_24" />
+            android:src="@drawable/ic_send_24"
+            android:tint="@color/white" />
     </LinearLayout>
 </LinearLayout>

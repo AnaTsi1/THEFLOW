@@ -1,6 +1,7 @@
 package com.ana.theflow.ui.discover
 
 import androidx.lifecycle.ViewModel
+import com.ana.theflow.data.recommendation.RecommendationProfile
 
 class DiscoverViewModel : ViewModel() {
     var loadedInternal: Boolean = false
@@ -10,6 +11,7 @@ class DiscoverViewModel : ViewModel() {
     var lastLoadedAtMillis: Long = 0L
     var scrollY: Int = 0
     var lastError: String = ""
+    var recommendationProfile: RecommendationProfile = RecommendationProfile.empty()
 
     fun hasUsableCache(): Boolean {
         return loadedInternal

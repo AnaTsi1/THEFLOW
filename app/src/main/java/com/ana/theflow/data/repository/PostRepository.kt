@@ -2,12 +2,21 @@
 package com.ana.theflow.data.repository
 
 import android.util.Log
+import com.ana.theflow.BuildConfig
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
 import com.ana.theflow.data.model.post.PostCommentReply
 import com.ana.theflow.data.model.post.PostMediaItem
+import com.ana.theflow.data.model.post.authorRef
+import com.ana.theflow.data.model.post.isStudioAuthored
 import com.ana.theflow.data.model.notification.InAppNotification
+import com.ana.theflow.data.model.studio.Studio
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.data.recommendation.ForYouRankingStrategy
+import com.ana.theflow.data.recommendation.RecommendationContext
+import com.ana.theflow.data.recommendation.RecommendationSurface
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
@@ -27,6 +36,7 @@ class PostRepository {
     private val db = FirebaseFirestore.getInstance()
     private val notificationRepository = NotificationRepository()
     private val userRepository = UserRepository()
+    private val activityTrackingRepository = ActivityTrackingRepository()
 
     // Creates a new text post for the author.
     fun createTextPost(
@@ -43,10 +53,14 @@ class PostRepository {
         )
     }
 
-    // Creates a post with optional typed composer fields.
+    // Creates a post with optional typed composer fields. When `account` is a studio account,
+    // `studio` must be supplied and the signed-in user must currently manage it - the post is
+    // then attributed to the studio while `actorUserId` still records who really wrote it.
     fun createPost(
         author: User,
         text: String,
+        account: ActiveAccount = ActiveAccountHolder.current(),
+        studio: Studio? = null,
         mediaType: String = "none",
         postType: String = POST_TYPE_REGULAR,
         visibility: String = "public",
@@ -76,6 +90,34 @@ class PostRepository {
             onFailure("Post author does not match the signed-in user")
             return
         }
+        // Auto-resolve the active studio when the caller didn't already have it loaded, so every
+        // composer screen posts as the correct account with no extra wiring required.
+        if (account is ActiveAccount.StudioAccount && studio == null) {
+            StudioRepository().loadStudio(
+                studioId = account.studioId,
+                onSuccess = { loadedStudio ->
+                    createPost(
+                        author = author, text = text, account = account, studio = loadedStudio,
+                        mediaType = mediaType, postType = postType, visibility = visibility,
+                        activityType = activityType, activityLocation = activityLocation, activityDate = activityDate,
+                        activityTime = activityTime, activityPrice = activityPrice, activityLevel = activityLevel,
+                        activityDescription = activityDescription, activityCapacity = activityCapacity,
+                        collaborationLookingFor = collaborationLookingFor, collaborationStyle = collaborationStyle,
+                        collaborationLocation = collaborationLocation, collaborationDate = collaborationDate,
+                        collaborationPaid = collaborationPaid, collaborationDescription = collaborationDescription,
+                        onSuccess = onSuccess, onFailure = onFailure
+                    )
+                },
+                onFailure = { onFailure("You do not manage this studio") }
+            )
+            return
+        }
+        if (account is ActiveAccount.StudioAccount &&
+            (studio == null || studio.id != account.studioId || currentUid !in (studio.managerUids + studio.ownerUid))
+        ) {
+            onFailure("You do not manage this studio")
+            return
+        }
         val hasBody = listOf(
             text,
             activityDescription,
@@ -95,7 +137,12 @@ class PostRepository {
             "authorId" to currentUid,
             "authorName" to authorName,
             "authorProfileImageUrl" to author.profileImageUrl,
-            "authorType" to author.role.ifBlank { "dancer" },
+            "authorType" to if (account is ActiveAccount.StudioAccount) "studio" else author.role.ifBlank { "dancer" },
+            "actorUserId" to currentUid,
+            "authorEntityType" to account.entityType,
+            "authorEntityId" to account.entityId,
+            "authorEntityName" to (studio?.displayName?.ifBlank { authorName } ?: authorName),
+            "authorEntityImageUrl" to (studio?.profileImageUrl ?: author.profileImageUrl),
             "text" to text.trim(),
             "mediaUrls" to emptyList<String>(),
             "mediaType" to mediaType.ifBlank { "none" },
@@ -135,6 +182,8 @@ class PostRepository {
     fun createRepost(
         originalPost: Post,
         author: User,
+        account: ActiveAccount = ActiveAccountHolder.current(),
+        studio: Studio? = null,
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -147,8 +196,24 @@ class PostRepository {
             onFailure("This post is not available to repost")
             return
         }
-        if (originalPost.authorId == currentUid) {
+        if (originalPost.authorId == currentUid && originalPost.postType != POST_TYPE_DANCE_ACTIVITY) {
             onFailure("You already created this post")
+            return
+        }
+        if (account is ActiveAccount.StudioAccount && studio == null) {
+            StudioRepository().loadStudio(
+                studioId = account.studioId,
+                onSuccess = { loadedStudio ->
+                    createRepost(originalPost, author, account, loadedStudio, onSuccess, onFailure)
+                },
+                onFailure = { onFailure("You do not manage this studio") }
+            )
+            return
+        }
+        if (account is ActiveAccount.StudioAccount &&
+            (studio == null || studio.id != account.studioId || currentUid !in (studio.managerUids + studio.ownerUid))
+        ) {
+            onFailure("You do not manage this studio")
             return
         }
 
@@ -169,18 +234,37 @@ class PostRepository {
                     "authorId" to currentUid,
                     "authorName" to authorName,
                     "authorProfileImageUrl" to author.profileImageUrl,
-                    "authorType" to author.role.ifBlank { "dancer" },
+                    "authorType" to if (account is ActiveAccount.StudioAccount) "studio" else author.role.ifBlank { "dancer" },
+                    "actorUserId" to currentUid,
+                    "authorEntityType" to account.entityType,
+                    "authorEntityId" to account.entityId,
+                    "authorEntityName" to (studio?.displayName?.ifBlank { authorName } ?: authorName),
+                    "authorEntityImageUrl" to (studio?.profileImageUrl ?: author.profileImageUrl),
                     "text" to "",
                     "mediaUrls" to emptyList<String>(),
                     "mediaItems" to emptyList<Map<String, Any>>(),
                     "mediaType" to "none",
                     "postType" to POST_TYPE_REPOST,
+                    "activityType" to originalPost.activityType,
+                    "activityLocation" to originalPost.activityLocation,
+                    "activityDate" to originalPost.activityDate,
+                    "activityTime" to originalPost.activityTime,
+                    "activityPrice" to originalPost.activityPrice,
+                    "activityLevel" to originalPost.activityLevel,
+                    "activityDescription" to originalPost.activityDescription,
+                    "activityCapacity" to originalPost.activityCapacity,
+                    "registrationsCount" to originalPost.registrationsCount,
+                    "waitlistCount" to originalPost.waitlistCount,
                     "visibility" to "public",
                     "likesCount" to 0,
                     "commentsCount" to 0,
                     "originalPostId" to originalPost.postId,
                     "originalAuthorId" to originalPost.authorId,
                     "originalAuthorName" to originalPost.authorName,
+                    "originalAuthorEntityType" to originalPost.authorRef().type,
+                    "originalAuthorEntityId" to originalPost.authorRef().id,
+                    "originalAuthorEntityName" to originalPost.authorRef().name,
+                    "originalAuthorEntityImageUrl" to originalPost.authorRef().imageUrl,
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
@@ -211,6 +295,8 @@ class PostRepository {
             .addOnSuccessListener { snapshot ->
                 val posts = snapshot.documents.mapNotNull { document ->
                     document.toObject(Post::class.java)?.copy(postId = document.id)
+                }.filter { post ->
+                    post.postType != POST_TYPE_DANCE_ACTIVITY || !post.isPastActivityDate()
                 }.sortedByDescending { it.createdAt?.seconds ?: 0L }
                 loadHiddenPostIds(
                     onSuccess = { hiddenIds ->
@@ -244,21 +330,26 @@ class PostRepository {
             }
     }
 
-    // Loads posts from followed authors.
+    // Loads posts from followed authors - both followed users and followed studios.
     fun loadFollowingFeed(
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        loadFollowedAuthorIds(
-            onSuccess = { followedAuthorIds ->
-                if (followedAuthorIds.isEmpty()) {
-                    onSuccess(emptyList())
-                    return@loadFollowedAuthorIds
-                }
-
-                loadPostsByFollowedAuthors(
-                    followedAuthorIds = followedAuthorIds,
-                    onSuccess = onSuccess,
+        loadFollowedUserIds(
+            onSuccess = { followedUserIds ->
+                loadFollowedStudioIds(
+                    onSuccess = { followedStudioIds ->
+                        if (followedUserIds.isEmpty() && followedStudioIds.isEmpty()) {
+                            onSuccess(emptyList())
+                            return@loadFollowedStudioIds
+                        }
+                        loadPostsByFollowedAuthors(
+                            followedUserIds = followedUserIds,
+                            followedStudioIds = followedStudioIds,
+                            onSuccess = onSuccess,
+                            onFailure = onFailure
+                        )
+                    },
                     onFailure = onFailure
                 )
             },
@@ -302,7 +393,10 @@ class PostRepository {
         )
     }
 
-    // Loads posts written by one author.
+    // Loads posts written by one author's personal account. Posts made on behalf of a studio
+    // this person manages belong to the studio's profile, not their personal one, so they're
+    // filtered out client-side - querying authorEntityType directly would also silently exclude
+    // every pre-existing post, since Firestore equality never matches a missing field.
     fun loadPostsByAuthor(
         authorId: String,
         onSuccess: (List<Post>) -> Unit,
@@ -323,11 +417,35 @@ class PostRepository {
             .addOnSuccessListener { snapshot ->
                 val posts = snapshot.documents.mapNotNull { document ->
                     document.toObject(Post::class.java)?.copy(postId = document.id)
-                }.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                }.filterNot { it.isStudioAuthored() }.sortedByDescending { it.createdAt?.seconds ?: 0L }
                 onSuccess(posts)
             }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to load profile posts")
+            }
+    }
+
+    // Loads posts published on behalf of a studio's business account.
+    fun loadPostsByStudio(
+        studioId: String,
+        onSuccess: (List<Post>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (studioId.isBlank()) {
+            onSuccess(emptyList())
+            return
+        }
+        db.collection(Constants.Collections.POSTS)
+            .whereEqualTo("authorEntityId", studioId)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val posts = snapshot.documents.mapNotNull { document ->
+                    document.toObject(Post::class.java)?.copy(postId = document.id)
+                }.filter { it.isStudioAuthored() }.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                onSuccess(posts)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to load studio posts")
             }
     }
 
@@ -395,7 +513,10 @@ class PostRepository {
                     "createdAt" to FieldValue.serverTimestamp()
                 )
             )
-            .addOnSuccessListener { onSuccess() }
+            .addOnSuccessListener {
+                activityTrackingRepository.trackPostHidden(post)
+                onSuccess()
+            }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to hide post")
             }
@@ -542,7 +663,10 @@ class PostRepository {
                     .addOnSuccessListener {
                         Log.d(TAG_LIKE, "like doc write success uid=$uid postId=$postId isNowLiked=${!isLiked}")
                         syncLikeCountBestEffort(postId)
-                        if (!isLiked) createLikeNotification(postId, uid)
+                        if (!isLiked) {
+                            createLikeNotification(postId, uid)
+                            trackPostSignal(postId) { activityTrackingRepository.trackPostLiked(it) }
+                        }
                         onSuccess(!isLiked)
                     }
                     .addOnFailureListener { error ->
@@ -573,6 +697,14 @@ class PostRepository {
             .addOnFailureListener { error ->
                 Log.w(TAG_LIKE, "like count read failed postId=$postId", error)
             }
+    }
+
+    private fun trackPostSignal(postId: String, tracker: (Post) -> Unit) {
+        loadPostById(
+            postId = postId,
+            onSuccess = tracker,
+            onFailure = {}
+        )
     }
 
     fun loadLikeCount(
@@ -659,7 +791,10 @@ class PostRepository {
                     )
                 }
                 batch.commit()
-                    .addOnSuccessListener { onSuccess(!isSaved) }
+                    .addOnSuccessListener {
+                        if (!isSaved) activityTrackingRepository.trackPostSaved(post)
+                        onSuccess(!isSaved)
+                    }
                     .addOnFailureListener { error ->
                         onFailure(error.message ?: "Failed to update saved post")
                     }
@@ -713,7 +848,7 @@ class PostRepository {
                 val postIds = snapshot.documents.map { document ->
                     document.getString("postId").orEmpty().ifBlank { document.id }
                 }.filter { it.isNotBlank() }
-                loadPostsByIds(postIds, onSuccess, onFailure)
+                loadPostsByIds(postIds, excludeDanceActivity = true, onSuccess = onSuccess, onFailure = onFailure)
             }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to load saved posts")
@@ -741,7 +876,7 @@ class PostRepository {
                 val postIds = snapshot.documents.map { document ->
                     document.getString("postId").orEmpty().ifBlank { document.id }
                 }.filter { it.isNotBlank() }
-                loadPostsByIds(postIds, onSuccess, onFailure)
+                loadPostsByIds(postIds, excludeDanceActivity = false, onSuccess = onSuccess, onFailure = onFailure)
             }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to load registered events")
@@ -772,6 +907,22 @@ class PostRepository {
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to load events")
             }
+    }
+
+    // Loads upcoming event posts ordered by the same recommendation profile used for the home feed.
+    fun loadRecommendedEventPosts(
+        onSuccess: (List<Post>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        loadUpcomingEventPosts(
+            onSuccess = { posts ->
+                rankForYouFeed(
+                    posts = posts,
+                    onSuccess = { ranked -> onSuccess(ranked.take(30)) }
+                )
+            },
+            onFailure = onFailure
+        )
     }
 
     // Toggles registration for a dance activity post.
@@ -855,7 +1006,10 @@ class PostRepository {
                 true
             }
         }
-            .addOnSuccessListener { isRegistered -> onSuccess(isRegistered) }
+            .addOnSuccessListener { isRegistered ->
+                activityTrackingRepository.trackEventRegistration(post, isRegistered)
+                onSuccess(isRegistered)
+            }
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to update event registration")
             }
@@ -926,6 +1080,7 @@ class PostRepository {
                 Log.d(TAG_COMMENT, "comment write success uid=$currentUid postId=$postId commentId=${commentRef.id}")
                 syncCommentCountBestEffort(postId)
                 createCommentNotification(postId, currentUid, author, cleanText, commentRef.id)
+                trackPostSignal(postId) { activityTrackingRepository.trackPostCommented(it) }
                 onSuccess()
             }
             .addOnFailureListener { error ->
@@ -1337,30 +1492,56 @@ class PostRepository {
             return
         }
 
-        db.collection(Constants.Collections.USERS)
-            .document(uid)
-            .collection(RECOMMENDATION_PROFILE_COLLECTION)
-            .document(RECOMMENDATION_PROFILE_DOCUMENT)
-            .get()
-            .addOnSuccessListener { document ->
-                onSuccess(
-                    RecommendationEngine.rankPosts(
-                        posts = posts,
-                        profile = document.toPostRecommendationProfile()
-                    )
+        userRepository.loadRecommendationProfile(
+            onSuccess = { profile ->
+                val context = RecommendationContext(
+                    userId = uid,
+                    surface = RecommendationSurface.FOR_YOU,
+                    profileLocation = profile.profileLocation,
+                    preferredRecommendationArea = profile.preferredRecommendationArea,
+                    danceStyles = profile.danceStyles,
+                    danceLevel = profile.danceLevel,
+                    recommendationProfile = profile
                 )
-            }
-            .addOnFailureListener {
+                val ranked = ForYouRankingStrategy.rank(
+                    items = posts,
+                    context = context
+                )
+                logForYouExplanations(ranked.take(10), context)
+                onSuccess(ranked)
+            },
+            onFailure = {
                 onSuccess(RecommendationEngine.rankPosts(posts, PostRecommendationProfile()))
             }
+        )
     }
 
-    // Loads all followed author ids for the following feed.
-    private fun loadFollowedAuthorIds(
+    private fun logForYouExplanations(posts: List<Post>, context: RecommendationContext) {
+        if (!BuildConfig.DEBUG) return
+        posts.forEach { post ->
+            val explanation = ForYouRankingStrategy.score(post, context)
+            Log.d(
+                "RecommendationDebug",
+                buildString {
+                    append("ForYou item=${post.postId} score=${"%.1f".format(explanation.finalScore)}")
+                    append(" mode=${explanation.exploreOrExploit}")
+                    append(" strategy=${explanation.rankingStrategy}")
+                    if (explanation.diversityAdjustments.isNotEmpty()) {
+                        append(" diversity=${explanation.diversityAdjustments.joinToString("; ")}")
+                    }
+                    append(" reasons=${explanation.reasons.joinToString("; ")}")
+                }
+            )
+        }
+    }
+
+    // Loads followed user ids (dancers + teachers) for the following feed. Followed studios are
+    // loaded separately since their posts are queried by authorEntityId, not authorId.
+    private fun loadFollowedUserIds(
         onSuccess: (List<String>) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        var pendingLoads = 3
+        var pendingLoads = 2
         val followedIds = linkedSetOf<String>()
         var completed = false
 
@@ -1384,21 +1565,63 @@ class PostRepository {
 
         loadFollowedDancerIds(onSuccess = ::completeWith, onFailure = ::fail)
         loadFollowedTeacherIds(onSuccess = ::completeWith, onFailure = ::fail)
-        loadFollowedStudioIds(onSuccess = ::completeWith, onFailure = ::fail)
     }
 
-    // Loads public posts written by followed authors.
+    // Loads public posts written by followed users' personal accounts or published by followed
+    // studios' business accounts.
     private fun loadPostsByFollowedAuthors(
-        followedAuthorIds: List<String>,
+        followedUserIds: List<String>,
+        followedStudioIds: List<String>,
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        val chunks = followedAuthorIds.chunked(FIRESTORE_WHERE_IN_LIMIT)
-        var pendingLoads = chunks.size
+        val userChunks = followedUserIds.chunked(FIRESTORE_WHERE_IN_LIMIT)
+        val studioChunks = followedStudioIds.chunked(FIRESTORE_WHERE_IN_LIMIT)
+        var pendingLoads = userChunks.size + studioChunks.size
+        if (pendingLoads == 0) {
+            onSuccess(emptyList())
+            return
+        }
         val posts = mutableListOf<Post>()
         var completed = false
 
-        chunks.forEach { authorIds ->
+        fun finishIfReady() {
+            if (completed) return
+            pendingLoads -= 1
+            if (pendingLoads > 0) return
+            completed = true
+            val userSet = followedUserIds.toSet()
+            val studioSet = followedStudioIds.toSet()
+            val relevant = posts.distinctBy { it.postId }.filter { post ->
+                (!post.isStudioAuthored() && post.authorId in userSet) ||
+                    (post.isStudioAuthored() && post.authorEntityId in studioSet)
+            }
+            loadHiddenPostIds(
+                onSuccess = { hiddenIds ->
+                    loadBlockedAuthorIds(
+                        onSuccess = { blockedIds ->
+                            onSuccess(
+                                relevant
+                                    .filterNot { hiddenIds.contains(it.postId) || blockedIds.contains(it.authorId) }
+                                    .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                            )
+                        },
+                        onFailure = {
+                            onSuccess(
+                                relevant
+                                    .filterNot { hiddenIds.contains(it.postId) }
+                                    .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                            )
+                        }
+                    )
+                },
+                onFailure = {
+                    onSuccess(relevant.sortedByDescending { it.createdAt?.seconds ?: 0L })
+                }
+            )
+        }
+
+        userChunks.forEach { authorIds ->
             db.collection(Constants.Collections.POSTS)
                 .whereEqualTo("visibility", "public")
                 .whereIn("authorId", authorIds)
@@ -1408,36 +1631,26 @@ class PostRepository {
                     posts.addAll(snapshot.documents.mapNotNull { document ->
                         document.toObject(Post::class.java)?.copy(postId = document.id)
                     })
-                    pendingLoads -= 1
-                    if (pendingLoads == 0) {
-                        completed = true
-                        val followedSet = followedAuthorIds.toSet()
-                        loadHiddenPostIds(
-                            onSuccess = { hiddenIds ->
-                                loadBlockedAuthorIds(
-                                    onSuccess = { blockedIds ->
-                                        onSuccess(
-                                            posts
-                                                .filter { it.authorId in followedSet }
-                                                .filterNot { hiddenIds.contains(it.postId) || blockedIds.contains(it.authorId) }
-                                                .sortedByDescending { it.createdAt?.seconds ?: 0L }
-                                        )
-                                    },
-                                    onFailure = {
-                                        onSuccess(
-                                            posts
-                                                .filter { it.authorId in followedSet }
-                                                .filterNot { hiddenIds.contains(it.postId) }
-                                                .sortedByDescending { it.createdAt?.seconds ?: 0L }
-                                        )
-                                    }
-                                )
-                            },
-                            onFailure = {
-                                onSuccess(posts.filter { it.authorId in followedSet }.sortedByDescending { it.createdAt?.seconds ?: 0L })
-                            }
-                        )
-                    }
+                    finishIfReady()
+                }
+                .addOnFailureListener { error ->
+                    if (completed) return@addOnFailureListener
+                    completed = true
+                    onFailure(error.message ?: "Failed to load following feed")
+                }
+        }
+
+        studioChunks.forEach { studioIds ->
+            db.collection(Constants.Collections.POSTS)
+                .whereEqualTo("visibility", "public")
+                .whereIn("authorEntityId", studioIds)
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    if (completed) return@addOnSuccessListener
+                    posts.addAll(snapshot.documents.mapNotNull { document ->
+                        document.toObject(Post::class.java)?.copy(postId = document.id)
+                    })
+                    finishIfReady()
                 }
                 .addOnFailureListener { error ->
                     if (completed) return@addOnFailureListener
@@ -1485,6 +1698,7 @@ class PostRepository {
     // Loads a known set of post ids while preserving the caller's order.
     private fun loadPostsByIds(
         postIds: List<String>,
+        excludeDanceActivity: Boolean,
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -1507,7 +1721,7 @@ class PostRepository {
                     if (completed) return@addOnSuccessListener
                     posts.addAll(snapshot.documents.mapNotNull { document ->
                         document.toObject(Post::class.java)?.copy(postId = document.id)
-                    })
+                    }.filter { post -> !excludeDanceActivity || post.postType != POST_TYPE_DANCE_ACTIVITY })
                     pendingLoads -= 1
                     if (pendingLoads == 0) {
                         completed = true
@@ -1634,8 +1848,6 @@ class PostRepository {
         const val TAG_COMMENT = "PostCommentDebug"
         const val TAG_PERMISSION = "FirestorePermissionDebug"
         const val FIRESTORE_WHERE_IN_LIMIT = 10
-        const val RECOMMENDATION_PROFILE_COLLECTION = "recommendationProfile"
-        const val RECOMMENDATION_PROFILE_DOCUMENT = "main"
         const val POST_TYPE_REGULAR = "regular"
         const val POST_TYPE_DANCE_ACTIVITY = "dance_activity"
         const val POST_TYPE_REPOST = "repost"

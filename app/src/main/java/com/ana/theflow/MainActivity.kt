@@ -7,15 +7,22 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.MessagingRepository
 import com.ana.theflow.data.repository.NotificationRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
+import com.ana.theflow.ui.account.AccountSwitcherDialog
+import com.ana.theflow.ui.account.ActiveAccountViewModel
+import com.ana.theflow.ui.studio.EditStudioProfileFragment
+import com.ana.theflow.ui.studio.StudioProfileFragment
 import com.ana.theflow.databinding.ActivityMainBinding
 import com.ana.theflow.ui.admin.AdminReviewFragment
 import com.ana.theflow.ui.creation.CollaborationCreationFragment
@@ -49,6 +56,8 @@ import com.ana.theflow.ui.settings.PrivacySafetySettingsFragment
 import com.ana.theflow.ui.settings.ProfessionalVerificationFragment
 import com.ana.theflow.ui.settings.ProfileSettingsFragment
 import com.ana.theflow.ui.settings.SettingsFragment
+import com.ana.theflow.ui.admin.AdminUserPermissionsFragment
+import com.ana.theflow.ui.studio.StudioRequestFragment
 import com.google.android.libraries.places.api.Places
 import com.google.firebase.firestore.ListenerRegistration
 
@@ -60,11 +69,22 @@ class MainActivity : AppCompatActivity() {
     private val notificationRepository = NotificationRepository()
     private var messageBadgeListener: ListenerRegistration? = null
     private var notificationBadgeListener: ListenerRegistration? = null
+    private val accountViewModel: ActiveAccountViewModel by viewModels()
     private val rootTabTags = mapOf(
         AppTab.HOME to "root_home",
         AppTab.DISCOVER to "root_discover",
         AppTab.PROFILE to "root_profile"
     )
+
+    // Re-derives Profile-tab and unread state whenever the active account (personal vs. a
+    // managed studio) changes, since it affects who "Profile" and messages/notifications mean.
+    private val activeAccountListener: (ActiveAccount) -> Unit = {
+        accountViewModel.refresh()
+        invalidateProfileRootTab()
+        if (selectedTab == AppTab.PROFILE) {
+            openProfile()
+        }
+    }
 
     // Sets up the activity when it is created.
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         setupBottomNavigation()
         setupBackNavigation()
         setupBadges()
+        ActiveAccountHolder.addListener(activeAccountListener)
         supportFragmentManager.addOnBackStackChangedListener {
             syncNavigationState()
         }
@@ -88,10 +109,14 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
+            accountViewModel.refresh()
+
             when (intent.getStringExtra(EXTRA_START_DESTINATION)) {
                 START_DESTINATION_ONBOARDING -> openOnboarding()
                 else -> openHome()
             }
+        } else {
+            accountViewModel.refresh()
         }
     }
 
@@ -181,14 +206,54 @@ class MainActivity : AppCompatActivity() {
         openFragment(EventsFragment(), addToBackStack = true)
     }
 
-    // Opens the profile tab.
+    // Opens the profile tab: the active account's own profile - a personal profile, or the
+    // active studio's business profile when a studio account is active.
     fun openProfile() {
-        openRootTab(ProfileFragment(), AppTab.PROFILE)
+        val account = ActiveAccountHolder.current()
+        val fragment: Fragment = if (account is ActiveAccount.StudioAccount) {
+            StudioProfileFragment.newInstance(account.studioId, asRootTab = true)
+        } else {
+            ProfileFragment()
+        }
+        openRootTab(fragment, AppTab.PROFILE)
     }
 
     fun openUserProfile(uid: String) {
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(ProfileFragment.newInstance(uid), addToBackStack = true)
+    }
+
+    // Opens a studio's business profile as a stacked screen (not the active account's own tab).
+    fun openStudioProfile(studioId: String) {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(StudioProfileFragment.newInstance(studioId, asRootTab = false), addToBackStack = true)
+    }
+
+    // Opens the business-profile editor for a studio the signed-in user manages.
+    fun openEditStudioProfile(studioId: String) {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(EditStudioProfileFragment.newInstance(studioId), addToBackStack = true)
+    }
+
+    // Routes a post/job/message author tap to the right profile - a studio's business profile
+    // when the content was published as a studio, otherwise the acting person's profile.
+    fun openAuthorEntity(ref: com.ana.theflow.data.model.post.AuthorRef) {
+        if (ref.id.isBlank()) return
+        if (ref.type == com.ana.theflow.utilities.Constants.EntityType.STUDIO) {
+            openStudioProfile(ref.id)
+        } else {
+            openUserProfile(ref.id)
+        }
+    }
+
+    // Removes the cached Profile root-tab fragment so the next openProfile() call rebuilds it
+    // for whichever account is now active, even if it's the same fragment class as before
+    // (e.g. switching from one managed studio to another).
+    private fun invalidateProfileRootTab() {
+        val tag = rootTabTags.getValue(AppTab.PROFILE)
+        supportFragmentManager.findFragmentByTag(tag)?.let { fragment ->
+            supportFragmentManager.beginTransaction().remove(fragment).commitNowAllowingStateLoss()
+        }
     }
 
     fun openFollowers(uid: String) {
@@ -284,6 +349,15 @@ class MainActivity : AppCompatActivity() {
         if (supportFragmentManager.findFragmentByTag(EventCreationFragment.TAG) != null) return
         EventCreationFragment().show(supportFragmentManager, EventCreationFragment.TAG)
     }
+
+    // Shows the personal-vs-studio account switcher.
+    fun openAccountSwitcher() {
+        if (supportFragmentManager.findFragmentByTag(AccountSwitcherDialog.TAG) != null) return
+        AccountSwitcherDialog().show(supportFragmentManager, AccountSwitcherDialog.TAG)
+    }
+
+    // Returns the currently active account's display summary, if loaded.
+    fun activeAccountSummary() = accountViewModel.activeSummary()
 
     fun openCollaborationCreation() {
         binding.mainLAYBottomNav.visibility = View.GONE
@@ -387,6 +461,27 @@ class MainActivity : AppCompatActivity() {
         openFragment(AdminReviewFragment(), addToBackStack = true)
     }
 
+    // Opens the admin user-permissions editor.
+    fun openAdminUserPermissions() {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(AdminUserPermissionsFragment(), addToBackStack = true)
+    }
+
+    // Opens the studio create/claim request screen.
+    fun openStudioRequest(
+        mode: String,
+        studioId: String = "",
+        studioName: String = "",
+        googlePlaceId: String = "",
+        address: String = ""
+    ) {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(
+            StudioRequestFragment.newInstance(mode, studioId, studioName, googlePlaceId, address),
+            addToBackStack = true
+        )
+    }
+
     // Opens the full media screen for the current profile.
     fun openProfileMedia() {
         binding.mainLAYBottomNav.visibility = View.GONE
@@ -463,7 +558,8 @@ class MainActivity : AppCompatActivity() {
             addToBackStack &&
             current != null &&
             current::class.java == fragment::class.java &&
-            current !is ProfileFragment
+            current !is ProfileFragment &&
+            current !is StudioProfileFragment
         ) {
             return
         }
@@ -502,40 +598,49 @@ class MainActivity : AppCompatActivity() {
 
     // Keeps the bottom navigation state in sync with the visible screen.
     private fun syncNavigationState() {
-        when (supportFragmentManager.findFragmentById(R.id.main_fragment_container)) {
-            is DetailFragment,
-            is PostDetailFragment,
-            is SettingsFragment,
-            is AccountSettingsFragment,
-            is ProfileSettingsFragment,
-            is FeedDiscoverySettingsFragment,
-            is NotificationSettingsFragment,
-            is PrivacySafetySettingsFragment,
-            is AppearanceSettingsFragment,
-            is HelpAboutSettingsFragment,
-            is EditProfileFragment,
-            is ProfessionalVerificationFragment,
-            is FollowListFragment,
-            is SavedItemsFragment,
-            is MyEventsFragment,
-            is ConversationsFragment,
-            is NotificationsFragment,
-            is PostCreationFragment,
-            is CollaborationCreationFragment,
-            is EventsFragment,
-            is JobsFragment,
-            is SearchFragment,
-            is MessageUserPickerFragment,
-            is OnboardingFragment,
-            is ProfileMediaFragment,
-            is MediaViewerFragment,
-            is ChatFragment -> {
-                binding.mainLAYBottomNav.visibility = View.GONE
+        val current = supportFragmentManager.findFragmentById(R.id.main_fragment_container)
+
+        if (current is StudioProfileFragment) {
+            binding.mainLAYBottomNav.visibility = if (current.isRootTabInstance()) View.VISIBLE else View.GONE
+        } else {
+            when (current) {
+                is DetailFragment,
+                is PostDetailFragment,
+                is SettingsFragment,
+                is AccountSettingsFragment,
+                is ProfileSettingsFragment,
+                is FeedDiscoverySettingsFragment,
+                is NotificationSettingsFragment,
+                is PrivacySafetySettingsFragment,
+                is AppearanceSettingsFragment,
+                is HelpAboutSettingsFragment,
+                is EditProfileFragment,
+                is ProfessionalVerificationFragment,
+                is FollowListFragment,
+                is SavedItemsFragment,
+                is MyEventsFragment,
+                is ConversationsFragment,
+                is NotificationsFragment,
+                is PostCreationFragment,
+                is CollaborationCreationFragment,
+                is EventsFragment,
+                is JobsFragment,
+                is SearchFragment,
+                is MessageUserPickerFragment,
+                is OnboardingFragment,
+                is ProfileMediaFragment,
+                is MediaViewerFragment,
+                is AdminUserPermissionsFragment,
+                is StudioRequestFragment,
+                is EditStudioProfileFragment,
+                is ChatFragment -> {
+                    binding.mainLAYBottomNav.visibility = View.GONE
+                }
+                else -> binding.mainLAYBottomNav.visibility = View.VISIBLE
             }
-            else -> binding.mainLAYBottomNav.visibility = View.VISIBLE
         }
 
-        when (supportFragmentManager.findFragmentById(R.id.main_fragment_container)) {
+        when (current) {
             is HomeFragment -> {
                 selectedTab = AppTab.HOME
                 markSelectedTab(AppTab.HOME)
@@ -547,6 +652,12 @@ class MainActivity : AppCompatActivity() {
             is ProfileFragment -> {
                 selectedTab = AppTab.PROFILE
                 markSelectedTab(AppTab.PROFILE)
+            }
+            is StudioProfileFragment -> {
+                if (current.isRootTabInstance()) {
+                    selectedTab = AppTab.PROFILE
+                    markSelectedTab(AppTab.PROFILE)
+                }
             }
         }
     }
@@ -604,6 +715,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         messageBadgeListener?.remove()
         notificationBadgeListener?.remove()
+        ActiveAccountHolder.removeListener(activeAccountListener)
         super.onDestroy()
     }
 

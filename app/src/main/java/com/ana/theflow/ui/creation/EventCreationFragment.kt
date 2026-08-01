@@ -3,6 +3,7 @@ package com.ana.theflow.ui.creation
 import android.app.DatePickerDialog
 import android.app.Dialog
 import android.app.TimePickerDialog
+import android.content.res.ColorStateList
 import android.content.DialogInterface
 import android.graphics.Color
 import android.net.Uri
@@ -20,6 +21,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.AutoCompleteTextView
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -41,6 +43,7 @@ import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.StorageRepository
 import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.ui.common.UiText
+import com.ana.theflow.utilities.CityOptions
 import com.bumptech.glide.Glide
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -60,6 +63,11 @@ class EventCreationFragment : DialogFragment() {
     private var isCreating = false
     private var hasEndDateTime = false
     private var scheduleType = ScheduleType.ONE_TIME
+    private var showScheduleDetails = false
+    private var showLocationDetails = false
+    private var showDanceDetails = false
+    private var showRegistrationDetails = false
+    private var showAdditionalDetails = false
 
     private lateinit var root: LinearLayout
     private lateinit var coverPreview: ImageView
@@ -76,7 +84,11 @@ class EventCreationFragment : DialogFragment() {
     private lateinit var endDateTimeContainer: LinearLayout
     private lateinit var timezoneLabel: TextView
     private lateinit var scheduleOptions: LinearLayout
+    private lateinit var scheduleDetailsContainer: LinearLayout
     private lateinit var recurrenceContainer: LinearLayout
+    private lateinit var locationDetailsContainer: LinearLayout
+    private lateinit var danceDetailsContainer: LinearLayout
+    private lateinit var registrationDetailsContainer: LinearLayout
     private lateinit var venueField: EditText
     private lateinit var addressField: EditText
     private lateinit var cityField: EditText
@@ -86,6 +98,8 @@ class EventCreationFragment : DialogFragment() {
     private lateinit var capacityField: EditText
     private lateinit var descriptionField: EditText
     private lateinit var additionalContainer: LinearLayout
+    private lateinit var registrationMethodField: EditText
+    private lateinit var externalRegistrationLinkField: EditText
     private lateinit var contactField: EditText
     private lateinit var createButton: Button
     private lateinit var errorText: TextView
@@ -117,6 +131,11 @@ class EventCreationFragment : DialogFragment() {
         savedInstanceState?.let {
             hasEndDateTime = it.getBoolean(KEY_HAS_END)
             scheduleType = ScheduleType.valueOf(it.getString(KEY_SCHEDULE, ScheduleType.ONE_TIME.name))
+            showScheduleDetails = it.getBoolean(KEY_SHOW_SCHEDULE)
+            showLocationDetails = it.getBoolean(KEY_SHOW_LOCATION)
+            showDanceDetails = it.getBoolean(KEY_SHOW_DANCE)
+            showRegistrationDetails = it.getBoolean(KEY_SHOW_REGISTRATION)
+            showAdditionalDetails = it.getBoolean(KEY_SHOW_ADDITIONAL)
         }
         requireActivity().onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -152,6 +171,7 @@ class EventCreationFragment : DialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         restoreText(savedInstanceState)
         renderSchedule()
+        renderProgressiveSections()
         renderCover()
         loadCurrentUser()
         updateCreateState()
@@ -176,6 +196,11 @@ class EventCreationFragment : DialogFragment() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(KEY_HAS_END, hasEndDateTime)
         outState.putString(KEY_SCHEDULE, scheduleType.name)
+        outState.putBoolean(KEY_SHOW_SCHEDULE, showScheduleDetails)
+        outState.putBoolean(KEY_SHOW_LOCATION, showLocationDetails)
+        outState.putBoolean(KEY_SHOW_DANCE, showDanceDetails)
+        outState.putBoolean(KEY_SHOW_REGISTRATION, showRegistrationDetails)
+        outState.putBoolean(KEY_SHOW_ADDITIONAL, showAdditionalDetails)
         outState.putString(KEY_NAME, nameField.text.toString())
         outState.putString(KEY_START_DATE, startDateField.text.toString())
         outState.putString(KEY_START_TIME, startTimeField.text.toString())
@@ -190,6 +215,8 @@ class EventCreationFragment : DialogFragment() {
         outState.putString(KEY_CAPACITY, capacityField.text.toString())
         outState.putString(KEY_DESCRIPTION, descriptionField.text.toString())
         outState.putString(KEY_CONTACT, contactField.text.toString())
+        outState.putString(KEY_REGISTRATION_METHOD, registrationMethodField.text.toString())
+        outState.putString(KEY_EXTERNAL_REGISTRATION_LINK, externalRegistrationLinkField.text.toString())
     }
 
     private fun topBar(): View {
@@ -300,80 +327,127 @@ class EventCreationFragment : DialogFragment() {
     private fun buildFields(parent: LinearLayout) {
         nameField = field("Event name")
         parent.addView(nameField)
+        parent.addView(section("Schedule type"))
+        scheduleOptions = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        parent.addView(scheduleOptions)
         parent.addView(section("Date and time"))
         parent.addView(horizontalRow(
             pickerField("Start date") { showDatePicker(startDateField) }.also { startDateField = it },
             pickerField("Start time") { showTimePicker(startTimeField) }.also { startTimeField = it }
         ))
-        timezoneLabel = TextView(requireContext()).apply {
-            text = "Time zone: ${TimeZone.getDefault().id}"
-            setTextColor(context.getColor(R.color.flow_text_secondary))
-            textSize = 12f
-            setPadding(4.dp(), 4.dp(), 0, 0)
-        }
-        parent.addView(timezoneLabel)
-        parent.addView(optionButton("Add end date and time") {
-            hasEndDateTime = !hasEndDateTime
-            renderSchedule()
+        parent.addView(expandableRow("Schedule", ::scheduleSummary) {
+            showScheduleDetails = !showScheduleDetails
+            renderProgressiveSections()
         })
-        endDateTimeContainer = horizontalRow(
-            pickerField("End date") { showDatePicker(endDateField) }.also { endDateField = it },
-            pickerField("End time") { showTimePicker(endTimeField) }.also { endTimeField = it }
-        )
-        parent.addView(endDateTimeContainer)
-
-        parent.addView(section("Schedule type"))
-        scheduleOptions = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL }
-        parent.addView(scheduleOptions)
-        recurrenceContainer = LinearLayout(requireContext()).apply {
+        scheduleDetailsContainer = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            addView(TextView(context).apply {
-                text = "Recurring options are stored as readable event notes until first-class recurrence fields are added."
+            timezoneLabel = TextView(context).apply {
+                text = "Time zone: ${TimeZone.getDefault().id}"
                 setTextColor(context.getColor(R.color.flow_text_secondary))
                 textSize = 12f
-                setPadding(4.dp(), 6.dp(), 4.dp(), 2.dp())
+                setPadding(4.dp(), 4.dp(), 0, 0)
+            }
+            addView(timezoneLabel)
+            addView(optionButton("Add end date and time") {
+                hasEndDateTime = !hasEndDateTime
+                renderSchedule()
             })
+            endDateTimeContainer = horizontalRow(
+                pickerField("End date") { showDatePicker(endDateField) }.also { endDateField = it },
+                pickerField("End time") { showTimePicker(endTimeField) }.also { endTimeField = it }
+            )
+            addView(endDateTimeContainer)
+            recurrenceContainer = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(context).apply {
+                    text = "Recurring details are stored as readable event notes until first-class recurrence fields are added."
+                    setTextColor(context.getColor(R.color.flow_text_secondary))
+                    textSize = 12f
+                    setPadding(4.dp(), 6.dp(), 4.dp(), 2.dp())
+                })
+            }
+            addView(recurrenceContainer)
         }
-        parent.addView(recurrenceContainer)
+        parent.addView(scheduleDetailsContainer)
 
         parent.addView(section("Location"))
         venueField = field("Venue or studio")
         addressField = field("Address")
-        cityField = field("City")
-        parent.addView(venueField)
-        parent.addView(addressField)
-        parent.addView(cityField)
-
-        parent.addView(section("Dance details"))
-        eventTypeField = field("Event type")
-        styleField = field("Dance style")
-        levelField = field("Level")
-        capacityField = field("Capacity").apply {
-            inputType = InputType.TYPE_CLASS_NUMBER
-            filters = arrayOf(InputFilter.LengthFilter(5))
+        cityField = AutoCompleteTextView(requireContext()).apply {
+            hint = "City"
+            setTextColor(context.getColor(R.color.flow_ink))
+            setHintTextColor(context.getColor(R.color.flow_text_muted))
+            setBackgroundResource(R.drawable.bg_flow_input)
+            minHeight = 52.dp()
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(14.dp(), 0, 14.dp(), 0)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 10.dp() }
         }
-        parent.addView(eventTypeField)
-        parent.addView(styleField)
-        parent.addView(levelField)
-        parent.addView(capacityField)
+        CityOptions.configureCitySelector(requireContext(), cityField as AutoCompleteTextView)
+        parent.addView(cityField)
+        parent.addView(expandableRow("Location details", ::locationSummary) {
+            showLocationDetails = !showLocationDetails
+            renderProgressiveSections()
+        })
+        locationDetailsContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(venueField)
+            addView(addressField)
+        }
+        parent.addView(locationDetailsContainer)
+
+        parent.addView(expandableRow("Dance details", ::danceSummary) {
+            showDanceDetails = !showDanceDetails
+            renderProgressiveSections()
+        })
+        danceDetailsContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            eventTypeField = selectionField("Event type", eventTypes)
+            styleField = selectionField("Dance style", danceStyles)
+            levelField = selectionField("Level", danceLevels)
+            addView(eventTypeField)
+            addView(styleField)
+            addView(levelField)
+        }
+        parent.addView(danceDetailsContainer)
+
+        parent.addView(expandableRow("Registration", ::registrationSummary) {
+            showRegistrationDetails = !showRegistrationDetails
+            renderProgressiveSections()
+        })
+        registrationDetailsContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            registrationMethodField = selectionField("Registration method", registrationMethods)
+            externalRegistrationLinkField = field("External registration link").apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            }
+            capacityField = field("Capacity").apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                filters = arrayOf(InputFilter.LengthFilter(5))
+            }
+            addView(registrationMethodField)
+            addView(externalRegistrationLinkField)
+            addView(capacityField)
+        }
+        parent.addView(registrationDetailsContainer)
 
         parent.addView(compactInfoRow("Who can see this event?", "Public", "Public event visibility is the supported Firestore state for event discovery."))
-        parent.addView(compactInfoRow("How can people register?", "Internal registration", "People register in Event Details through THE FLOW."))
-        parent.addView(optionButton("Additional settings") {
-            additionalContainer.visibility = if (additionalContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        parent.addView(expandableRow("Additional details", ::additionalSummary) {
+            showAdditionalDetails = !showAdditionalDetails
+            renderProgressiveSections()
         })
         additionalContainer = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             contactField = field("Contact information")
+            descriptionField = field("Description", minHeightDp = 104, multiLine = true)
             addView(contactField)
+            addView(descriptionField)
         }
         parent.addView(additionalContainer)
-
-        parent.addView(section("Description"))
-        descriptionField = field("Description", minHeightDp = 104, multiLine = true)
-        parent.addView(descriptionField)
-        listOf(nameField, startDateField, startTimeField, endDateField, endTimeField, venueField, addressField, cityField, styleField, levelField, eventTypeField, capacityField, descriptionField, contactField)
+        listOf(nameField, startDateField, startTimeField, endDateField, endTimeField, venueField, addressField, cityField, styleField, levelField, eventTypeField, capacityField, registrationMethodField, externalRegistrationLinkField, descriptionField, contactField)
             .forEach { it.addTextChangedListener(validationWatcher) }
     }
 
@@ -392,6 +466,9 @@ class EventCreationFragment : DialogFragment() {
                 text = "Create Event"
                 isAllCaps = false
                 setTextColor(context.getColor(R.color.white))
+                setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_add_24, 0, 0, 0)
+                compoundDrawableTintList = ColorStateList.valueOf(context.getColor(R.color.white))
+                compoundDrawablePadding = 8.dp()
                 setBackgroundResource(R.drawable.bg_flow_button_primary)
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 50.dp())
                 setOnClickListener { createEvent() }
@@ -486,6 +563,8 @@ class EventCreationFragment : DialogFragment() {
             if (hasEndDateTime) "Ends: ${endDateField.textString()} ${endTimeField.textString()}".trim() else "",
             eventTypeField.textString().ifBlank { null }?.let { "Event type: $it" },
             styleField.textString().ifBlank { null }?.let { "Dance style: $it" },
+            registrationMethodField.textString().ifBlank { null }?.let { "Registration: $it" },
+            externalRegistrationLinkField.textString().ifBlank { null }?.let { "Registration link: $it" },
             contactField.textString().ifBlank { null }?.let { "Contact: $it" }
         ).filterNotNull().filter { it.isNotBlank() }.joinToString("\n")
     }
@@ -495,6 +574,7 @@ class EventCreationFragment : DialogFragment() {
         if (nameField.textString().isBlank()) return "Add an event name."
         if (startDateField.textString().isBlank()) return "Add a start date."
         if (startTimeField.textString().isBlank()) return "Add a start time."
+        if (CityOptions.normalizeOptionalCity(cityField.textString()) == null) return "Choose a city from the list."
         if (isPastStart()) return "Choose a future start date."
         if (hasEndDateTime && !isEndAfterStart()) return "End date and time must be after the start."
         return null
@@ -502,9 +582,16 @@ class EventCreationFragment : DialogFragment() {
 
     private fun updateCreateState() {
         if (!::createButton.isInitialized) return
-        val valid = validationMessage() == null && !isCreating
+        val validation = validationMessage()
+        val valid = validation == null && !isCreating
         createButton.isEnabled = valid
         createButton.alpha = if (valid) 1f else 0.48f
+        if (!isCreating && validation != null) {
+            errorText.text = validation
+            errorText.visibility = View.VISIBLE
+        } else if (!isCreating) {
+            errorText.visibility = View.GONE
+        }
     }
 
     private fun renderSchedule() {
@@ -515,14 +602,31 @@ class EventCreationFragment : DialogFragment() {
         ScheduleType.entries.forEach { type ->
             scheduleOptions.addView(optionButton(type.label) {
                 scheduleType = type
-                if (type == ScheduleType.DATE_RANGE) hasEndDateTime = true
+                if (type == ScheduleType.DATE_RANGE) {
+                    hasEndDateTime = true
+                    showScheduleDetails = true
+                }
+                if (type == ScheduleType.RECURRING) showScheduleDetails = true
                 renderSchedule()
                 updateCreateState()
             }.apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 42.dp()).apply {
+                    topMargin = 8.dp()
+                }
                 setTextColor(context.getColor(if (scheduleType == type) R.color.white else R.color.flow_brand))
                 setBackgroundResource(if (scheduleType == type) R.drawable.bg_flow_button_primary else R.drawable.bg_flow_button_secondary)
             })
         }
+        renderProgressiveSections()
+    }
+
+    private fun renderProgressiveSections() {
+        if (!::scheduleDetailsContainer.isInitialized) return
+        scheduleDetailsContainer.visibility = if (showScheduleDetails) View.VISIBLE else View.GONE
+        locationDetailsContainer.visibility = if (showLocationDetails) View.VISIBLE else View.GONE
+        danceDetailsContainer.visibility = if (showDanceDetails) View.VISIBLE else View.GONE
+        registrationDetailsContainer.visibility = if (showRegistrationDetails) View.VISIBLE else View.GONE
+        additionalContainer.visibility = if (showAdditionalDetails) View.VISIBLE else View.GONE
     }
 
     private fun renderCover() {
@@ -551,7 +655,7 @@ class EventCreationFragment : DialogFragment() {
 
     private fun hasUnsavedChanges(): Boolean {
         if (pendingCoverUri != null) return true
-        return listOf(nameField, startDateField, startTimeField, endDateField, endTimeField, venueField, addressField, cityField, styleField, levelField, eventTypeField, capacityField, descriptionField, contactField)
+        return listOf(nameField, startDateField, startTimeField, endDateField, endTimeField, venueField, addressField, cityField, styleField, levelField, eventTypeField, capacityField, registrationMethodField, externalRegistrationLinkField, descriptionField, contactField)
             .any { it.textString().isNotBlank() }
     }
 
@@ -571,6 +675,8 @@ class EventCreationFragment : DialogFragment() {
         capacityField.setText(state.getString(KEY_CAPACITY, ""))
         descriptionField.setText(state.getString(KEY_DESCRIPTION, ""))
         contactField.setText(state.getString(KEY_CONTACT, ""))
+        registrationMethodField.setText(state.getString(KEY_REGISTRATION_METHOD, ""))
+        externalRegistrationLinkField.setText(state.getString(KEY_EXTERNAL_REGISTRATION_LINK, ""))
     }
 
     private fun isPastStart(): Boolean {
@@ -631,6 +737,25 @@ class EventCreationFragment : DialogFragment() {
         setOnClickListener { onPick() }
     }
 
+    private fun selectionField(hint: String, options: List<String>) = pickerField(hint) {
+        showChoicePicker(hint, options) { selected ->
+            when (hint) {
+                "Event type" -> eventTypeField.setText(selected)
+                "Dance style" -> styleField.setText(selected)
+                "Level" -> levelField.setText(selected)
+                "Registration method" -> registrationMethodField.setText(selected)
+            }
+        }
+    }
+
+    private fun showChoicePicker(title: String, options: List<String>, onSelected: (String) -> Unit) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setItems(options.toTypedArray()) { _, which -> onSelected(options[which]) }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
     private fun horizontalRow(left: View, right: View) = LinearLayout(requireContext()).apply {
         orientation = LinearLayout.HORIZONTAL
         addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = 6.dp() })
@@ -647,6 +772,39 @@ class EventCreationFragment : DialogFragment() {
             rightMargin = 8.dp()
             topMargin = 8.dp()
         }
+        setOnClickListener { onClick() }
+    }
+
+    private fun expandableRow(title: String, summary: () -> String, onClick: () -> Unit) = LinearLayout(requireContext()).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundResource(R.drawable.bg_flow_card)
+        setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
+        isClickable = true
+        isFocusable = true
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 10.dp() }
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            addView(TextView(context).apply {
+                text = title
+                setTextColor(context.getColor(R.color.flow_ink))
+                textSize = 15f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(context).apply {
+                text = summary()
+                setTextColor(context.getColor(R.color.flow_text_secondary))
+                textSize = 12f
+                setPadding(0, 3.dp(), 0, 0)
+            })
+        })
+        addView(TextView(context).apply {
+            text = ">"
+            setTextColor(context.getColor(R.color.flow_brand))
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
         setOnClickListener { onClick() }
     }
 
@@ -684,6 +842,35 @@ class EventCreationFragment : DialogFragment() {
         setPadding(0, 16.dp(), 0, 2.dp())
     }
 
+    private fun scheduleSummary(): String {
+        return if (hasEndDateTime) "${scheduleType.label} / end time set" else scheduleType.label
+    }
+
+    private fun locationSummary(): String {
+        return listOf(venueField.textString(), addressField.textString()).filter { it.isNotBlank() }.joinToString(", ").ifBlank { "Venue and address are optional" }
+    }
+
+    private fun danceSummary(): String {
+        if (!::eventTypeField.isInitialized || !::styleField.isInitialized || !::levelField.isInitialized) {
+            return "Optional dance metadata"
+        }
+        return listOf(eventTypeField.textString(), styleField.textString(), levelField.textString()).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { "Optional dance metadata" }
+    }
+
+    private fun registrationSummary(): String {
+        if (!::registrationMethodField.isInitialized || !::capacityField.isInitialized) {
+            return "Optional registration settings"
+        }
+        return listOf(registrationMethodField.textString(), capacityField.textString().ifBlank { null }?.let { "$it spots" }).filterNotNull().joinToString(" / ").ifBlank { "Optional registration settings" }
+    }
+
+    private fun additionalSummary(): String {
+        if (!::contactField.isInitialized || !::descriptionField.isInitialized) {
+            return "Description and contact are optional"
+        }
+        return listOf(contactField.textString(), descriptionField.textString().ifBlank { null }?.let { "Description added" }).filterNotNull().joinToString(" / ").ifBlank { "Description and contact are optional" }
+    }
+
     private val validationWatcher = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
         override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -703,6 +890,11 @@ class EventCreationFragment : DialogFragment() {
         const val TAG = "EventCreationFragment"
         private const val KEY_HAS_END = "has_end"
         private const val KEY_SCHEDULE = "schedule"
+        private const val KEY_SHOW_SCHEDULE = "show_schedule"
+        private const val KEY_SHOW_LOCATION = "show_location"
+        private const val KEY_SHOW_DANCE = "show_dance"
+        private const val KEY_SHOW_REGISTRATION = "show_registration"
+        private const val KEY_SHOW_ADDITIONAL = "show_additional"
         private const val KEY_NAME = "name"
         private const val KEY_START_DATE = "start_date"
         private const val KEY_START_TIME = "start_time"
@@ -717,6 +909,12 @@ class EventCreationFragment : DialogFragment() {
         private const val KEY_CAPACITY = "capacity"
         private const val KEY_DESCRIPTION = "description"
         private const val KEY_CONTACT = "contact"
+        private const val KEY_REGISTRATION_METHOD = "registration_method"
+        private const val KEY_EXTERNAL_REGISTRATION_LINK = "external_registration_link"
+        private val eventTypes = listOf("Class", "Workshop", "Social", "Audition", "Performance", "Battle", "Intensive")
+        private val danceStyles = listOf("Hip Hop", "Heels", "Salsa", "Contemporary", "Afro", "Ballet", "Jazz", "Bachata")
+        private val danceLevels = listOf("Beginner", "Intermediate", "Advanced", "Professional", "Open Level", "All levels")
+        private val registrationMethods = listOf("No registration", "Internal registration", "External link", "Contact organizer")
     }
 }
 

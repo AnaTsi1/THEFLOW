@@ -1,117 +1,179 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/profile_SCROLL_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/flow_background"
     android:clipToPadding="false"
     android:fillViewport="true"
     android:paddingLeft="@dimen/flow_screen_padding"
-    android:paddingTop="@dimen/flow_gap_medium"
+    android:paddingTop="@dimen/flow_gap_small"
     android:paddingRight="@dimen/flow_screen_padding"
     android:paddingBottom="88dp">
 
     <LinearLayout
+        android:id="@+id/profile_LAY_rootContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingBottom="24dp">
 
-        <LinearLayout
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_flow_card"
-            android:orientation="vertical"
-            android:padding="@dimen/flow_card_padding">
+            android:layout_height="178dp">
 
             <ImageView
                 android:id="@+id/profile_IMG_cover"
                 android:layout_width="match_parent"
-                android:layout_height="96dp"
+                android:layout_height="140dp"
                 android:background="@drawable/bg_flow_media"
                 android:contentDescription="@string/profile_cover_image"
                 android:scaleType="centerCrop" />
 
             <ImageView
                 android:id="@+id/profile_IMG_avatar"
-                android:layout_width="104dp"
-                android:layout_height="104dp"
-                android:layout_marginTop="-44dp"
+                android:layout_width="106dp"
+                android:layout_height="106dp"
+                android:layout_gravity="bottom|start"
+                android:layout_marginStart="14dp"
                 android:background="@drawable/bg_avatar"
                 android:contentDescription="@string/profile_photo"
                 android:scaleType="centerCrop" />
 
-            <LinearLayout
+            <ImageButton
+                android:id="@+id/profile_BTN_settings"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="10dp"
+                android:background="@drawable/bg_flow_icon_button"
+                android:contentDescription="@string/profile_settings"
+                android:padding="10dp"
+                android:src="@drawable/ic_settings_24"
+                android:tint="@color/flow_brand" />
+
+            <ImageButton
+                android:id="@+id/profile_BTN_more"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="10dp"
+                android:background="@drawable/bg_flow_icon_button"
+                android:contentDescription="@string/more_options"
+                android:padding="10dp"
+                android:src="@drawable/ic_more_horizontal_24"
+                android:tint="@color/flow_brand"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/profile_LAY_identity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="6dp">
+
+            <TextView
+                android:id="@+id/profile_LBL_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:gravity="center_vertical"
+                android:maxLines="2"
+                android:textColor="@color/flow_ink"
+                android:textSize="25sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/profile_LBL_headline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/profile_LBL_about"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:lineSpacingExtra="3dp"
+                android:textColor="@color/flow_ink"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/profile_LBL_skills"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:lineSpacingExtra="4dp"
+                android:textColor="@color/flow_brand"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/profile_LAY_followStats"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
                 android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/profile_LBL_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:maxLines="2"
+                <Button
+                    android:id="@+id/profile_BTN_followers"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_flow_button_ghost"
+                    android:minWidth="0dp"
+                    android:paddingStart="0dp"
+                    android:paddingEnd="18dp"
+                    android:textAllCaps="false"
                     android:textColor="@color/flow_ink"
-                    android:textSize="22sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
-                <ImageButton
-                    android:id="@+id/profile_BTN_settings"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/bg_flow_icon_button"
-                    android:contentDescription="@string/profile_settings"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_settings_24"
-                    android:tint="@color/flow_brand" />
-
-                <ImageButton
-                    android:id="@+id/profile_BTN_more"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/bg_flow_icon_button"
-                    android:contentDescription="@string/more_options"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_more_horizontal_24"
-                    android:tint="@color/flow_brand"
-                    android:visibility="gone" />
+                <Button
+                    android:id="@+id/profile_BTN_following"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_flow_button_ghost"
+                    android:minWidth="0dp"
+                    android:paddingStart="0dp"
+                    android:paddingEnd="18dp"
+                    android:textAllCaps="false"
+                    android:textColor="@color/flow_ink"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <Button
                 android:id="@+id/profile_BTN_edit"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/flow_touch_size"
-                android:layout_marginTop="@dimen/flow_gap_small"
+                android:layout_height="40dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/bg_flow_button_secondary"
                 android:minWidth="0dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:text="@string/profile_edit"
                 android:textAllCaps="false"
                 android:textColor="@color/flow_brand"
-                android:textSize="13sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <LinearLayout
                 android:id="@+id/profile_LAY_public_actions"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/flow_gap_small"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal"
                 android:visibility="gone">
 
                 <Button
                     android:id="@+id/profile_BTN_follow"
                     android:layout_width="0dp"
-                    android:layout_height="@dimen/flow_touch_size"
-                    android:layout_marginEnd="@dimen/flow_gap_small"
+                    android:layout_height="42dp"
+                    android:layout_marginEnd="8dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_flow_button_primary"
                     android:minWidth="0dp"
-                    android:paddingStart="20dp"
-                    android:paddingEnd="20dp"
                     android:text="@string/profile_follow"
                     android:textAllCaps="false"
                     android:textColor="@color/flow_surface"
@@ -121,13 +183,11 @@
                 <Button
                     android:id="@+id/profile_BTN_message"
                     android:layout_width="0dp"
-                    android:layout_height="@dimen/flow_touch_size"
+                    android:layout_height="42dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_flow_button_secondary"
                     android:contentDescription="@string/profile_message"
                     android:minWidth="0dp"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp"
                     android:text="@string/profile_message"
                     android:textAllCaps="false"
                     android:textColor="@color/flow_brand"
@@ -138,165 +198,291 @@
             <Button
                 android:id="@+id/profile_BTN_report"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/flow_touch_size"
-                android:layout_marginTop="@dimen/flow_gap_small"
-                android:background="@drawable/bg_flow_button_ghost"
-                android:minWidth="0dp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:text="@string/profile_report"
-                android:textAllCaps="false"
-                android:textColor="@color/flow_text_secondary"
-                android:textSize="12sp"
+                android:layout_height="1dp"
                 android:visibility="gone" />
 
             <Button
                 android:id="@+id/profile_BTN_block"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/flow_touch_size"
-                android:layout_marginTop="@dimen/flow_gap_small"
-                android:background="@drawable/bg_flow_button_ghost"
-                android:minWidth="0dp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:text="@string/profile_block"
-                android:textAllCaps="false"
-                android:textColor="@color/flow_error"
-                android:textSize="12sp"
+                android:layout_height="1dp"
                 android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/profile_LBL_headline"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textColor="@color/flow_text_secondary"
-                android:textSize="15sp" />
-
-            <TextView
-                android:id="@+id/profile_LBL_about"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:lineSpacingExtra="3dp"
-                android:textColor="@color/flow_text_secondary"
-                android:textSize="15sp" />
-
-            <LinearLayout
-                android:id="@+id/profile_LAY_followStats"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/profile_BTN_followers"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/flow_touch_size"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_flow_button_secondary"
-                    android:textColor="@color/flow_brand"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textAllCaps="false" />
-
-                <Button
-                    android:id="@+id/profile_BTN_following"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/flow_touch_size"
-                    android:layout_marginStart="@dimen/flow_gap_small"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_flow_button_secondary"
-                    android:textColor="@color/flow_brand"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textAllCaps="false" />
-            </LinearLayout>
-
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/profile_LAY_managementActions"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/flow_gap_medium"
-            android:orientation="horizontal">
+            android:layout_height="1dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
 
             <Button
                 android:id="@+id/profile_BTN_savedItems"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/flow_touch_size"
-                android:background="@drawable/bg_flow_button_secondary"
-                android:minWidth="0dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:text="@string/profile_saved"
-                android:textAllCaps="false"
-                android:textColor="@color/flow_brand"
-                android:textStyle="bold" />
+                android:layout_height="1dp" />
 
             <Button
                 android:id="@+id/profile_BTN_myEvents"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/flow_touch_size"
-                android:layout_marginStart="@dimen/flow_gap_small"
-                android:background="@drawable/bg_flow_button_secondary"
-                android:minWidth="0dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:text="@string/my_events_title"
-                android:textAllCaps="false"
-                android:textColor="@color/flow_brand"
-                android:textStyle="bold" />
+                android:layout_height="1dp" />
         </LinearLayout>
 
         <Button
             android:id="@+id/profile_BTN_createContent"
             android:layout_width="wrap_content"
-            android:layout_height="@dimen/flow_touch_size"
-            android:layout_marginTop="@dimen/flow_gap_small"
-            android:background="@drawable/bg_flow_button_primary"
-            android:minWidth="0dp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="Create"
-            android:textAllCaps="false"
-            android:textColor="@color/flow_surface"
-            android:textStyle="bold"
+            android:layout_height="1dp"
             android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/profile_LAY_mediaSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Media"
+                    android:textColor="@color/flow_ink"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/profile_BTN_openMedia"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:background="@drawable/bg_flow_button_ghost"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="0dp"
+                    android:text="See All"
+                    android:textAllCaps="false"
+                    android:textColor="@color/flow_brand"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="108dp"
+                android:layout_marginTop="10dp"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/profile_LAY_mediaStrip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
+
+            <TextView
+                android:id="@+id/profile_LBL_mediaEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="No media shared yet."
+                android:textColor="@color/flow_text_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/profile_LAY_tabs"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:background="@color/flow_background"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/profile_TAB_posts"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="bottom"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/profile_TABLBL_posts"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Posts"
+                    android:textColor="@color/flow_ink"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/profile_TABIND_posts"
+                    android:layout_width="34dp"
+                    android:layout_height="3dp"
+                    android:layout_gravity="center_horizontal"
+                    android:background="@drawable/bg_home_tab_indicator" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/profile_TAB_media"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="bottom"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/profile_TABLBL_media"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Media"
+                    android:textColor="@color/flow_text_secondary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/profile_TABIND_media"
+                    android:layout_width="34dp"
+                    android:layout_height="3dp"
+                    android:layout_gravity="center_horizontal"
+                    android:background="@drawable/bg_home_tab_indicator"
+                    android:visibility="invisible" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/profile_TAB_events"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="bottom"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/profile_TABLBL_events"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Events"
+                    android:textColor="@color/flow_text_secondary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/profile_TABIND_events"
+                    android:layout_width="34dp"
+                    android:layout_height="3dp"
+                    android:layout_gravity="center_horizontal"
+                    android:background="@drawable/bg_home_tab_indicator"
+                    android:visibility="invisible" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/profile_TAB_about"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="bottom"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/profile_TABLBL_about"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="About"
+                    android:textColor="@color/flow_text_secondary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/profile_TABIND_about"
+                    android:layout_width="34dp"
+                    android:layout_height="3dp"
+                    android:layout_gravity="center_horizontal"
+                    android:background="@drawable/bg_home_tab_indicator"
+                    android:visibility="invisible" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/profile_PROGRESS_content"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="18dp"
+            android:indeterminateTint="@color/flow_brand"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/profile_LBL_postsEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_flow_card"
+            android:padding="@dimen/flow_card_padding"
+            android:text="No posts yet."
+            android:textColor="@color/flow_text_muted"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/profile_LAY_posts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/profile_LAY_mediaPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/profile_LAY_mediaFilters"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:orientation="horizontal" />
+
+            <LinearLayout
+                android:id="@+id/profile_LAY_mediaGrid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/profile_BTN_closeMedia"
+                android:layout_width="1dp"
+                android:layout_height="1dp"
+                android:visibility="gone" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/profile_LAY_sections"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Professional Details"
-                android:textColor="@color/text_primary"
-                android:textSize="17sp"
-                android:textStyle="bold" />
+            android:orientation="vertical"
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/profile_LBL_details"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
                 android:lineSpacingExtra="4dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/profile_LBL_skills"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:lineSpacingExtra="4dp"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/flow_ink"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -305,80 +491,74 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
+            android:background="@drawable/bg_flow_card"
             android:orientation="vertical"
+            android:padding="@dimen/flow_card_padding"
             android:visibility="gone">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Edit Public Profile"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/flow_ink"
                 android:textSize="18sp"
                 android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/profile_LBL_editPrompt"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Add only what you want people to see on your public profile."
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/profile_BTN_profilePhoto"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
                 android:layout_marginTop="12dp"
-                android:background="@drawable/bg_button_secondary"
+                android:background="@drawable/bg_flow_button_secondary"
                 android:text="Choose Profile Photo"
-                android:textColor="@color/text_primary" />
+                android:textAllCaps="false"
+                android:textColor="@color/flow_brand" />
 
             <Button
                 android:id="@+id/profile_BTN_coverImage"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_button_secondary"
+                android:background="@drawable/bg_flow_button_secondary"
                 android:text="Choose Cover Image"
-                android:textColor="@color/text_primary" />
+                android:textAllCaps="false"
+                android:textColor="@color/flow_brand" />
 
             <EditText
                 android:id="@+id/profile_EDT_bio"
                 android:layout_width="match_parent"
                 android:layout_height="96dp"
                 android:layout_marginTop="14dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:gravity="top"
                 android:hint="Bio"
                 android:inputType="textMultiLine"
                 android:paddingTop="12dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/profile_EDT_background"
                 android:layout_width="match_parent"
                 android:layout_height="112dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:gravity="top"
                 android:hint="Professional background"
                 android:inputType="textMultiLine"
                 android:paddingTop="12dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <EditText
                 android:id="@+id/profile_EDT_skills"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_input"
+                android:background="@drawable/bg_flow_input"
                 android:hint="Skills / specialties, comma separated"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -392,9 +572,10 @@
                     android:layout_height="48dp"
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_button_secondary"
+                    android:background="@drawable/bg_flow_button_secondary"
                     android:text="Cancel"
-                    android:textColor="@color/text_primary" />
+                    android:textAllCaps="false"
+                    android:textColor="@color/flow_brand" />
 
                 <Button
                     android:id="@+id/profile_BTN_saveEdit"
@@ -402,107 +583,11 @@
                     android:layout_height="48dp"
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_button_primary"
+                    android:background="@drawable/bg_flow_button_primary"
                     android:text="Save"
-                    android:textColor="@color/text_primary"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/profile_LAY_mediaSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Media"
-                    android:textColor="@color/text_primary"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/profile_BTN_openMedia"
-                    android:layout_width="wrap_content"
-                    android:layout_height="38dp"
-                    android:background="@drawable/bg_button_secondary"
-                    android:minWidth="0dp"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp"
-                    android:text="View all"
                     android:textAllCaps="false"
-                    android:textColor="@color/text_primary"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <HorizontalScrollView
-                android:layout_width="match_parent"
-                android:layout_height="112dp"
-                android:layout_marginTop="12dp"
-                android:scrollbars="none">
-
-                <LinearLayout
-                    android:id="@+id/profile_LAY_mediaStrip"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:orientation="horizontal" />
-            </HorizontalScrollView>
-
-            <LinearLayout
-                android:id="@+id/profile_LAY_mediaPanel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="All Media"
-                        android:textColor="@color/text_primary"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <Button
-                        android:id="@+id/profile_BTN_closeMedia"
-                        android:layout_width="wrap_content"
-                        android:layout_height="38dp"
-                        android:background="@drawable/bg_button_secondary"
-                        android:minWidth="0dp"
-                        android:paddingStart="14dp"
-                        android:paddingEnd="14dp"
-                        android:text="Close"
-                        android:textAllCaps="false"
-                        android:textColor="@color/text_primary"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/profile_LAY_mediaGrid"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:orientation="vertical" />
+                    android:textColor="@color/flow_surface"
+                    android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
 
@@ -512,21 +597,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/flow_gap_medium"
             android:background="@drawable/bg_flow_card"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/profile_create_post"
-                android:textColor="@color/flow_ink"
-                android:textSize="17sp"
-                android:textStyle="bold" />
+            android:orientation="vertical"
+            android:padding="@dimen/flow_card_padding"
+            android:visibility="gone">
 
             <EditText
                 android:id="@+id/profile_EDT_postText"
                 android:layout_width="match_parent"
                 android:layout_height="104dp"
-                android:layout_marginTop="@dimen/flow_gap_medium"
                 android:background="@drawable/bg_flow_input"
                 android:gravity="top"
                 android:hint="@string/profile_post_hint"
@@ -758,11 +836,5 @@
                 android:textColor="@color/flow_surface"
                 android:textStyle="bold" />
         </LinearLayout>
-
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:background="@drawable/bg_card" android:orientation="vertical">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Posts" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold" />
-            <TextView android:id="@+id/profile_LBL_postsEmpty" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="No posts yet." android:textColor="@color/text_muted" android:textSize="14sp" />
-            <LinearLayout android:id="@+id/profile_LAY_posts" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+</androidx.core.widget.NestedScrollView>

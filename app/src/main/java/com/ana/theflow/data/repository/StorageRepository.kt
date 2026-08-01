@@ -74,6 +74,62 @@ class StorageRepository {
         )
     }
 
+    // Uploads a studio's logo image and saves its URL.
+    fun uploadStudioLogo(
+        studioId: String,
+        imageUri: Uri,
+        onLoading: (Boolean) -> Unit = {},
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (studioId.isBlank()) {
+            onFailure("Missing studio id")
+            return
+        }
+        uploadAndSaveUrl(
+            path = "studios/$studioId/profile/logo.jpg",
+            fileUri = imageUri,
+            onLoading = onLoading,
+            saveUrl = { url, success, failure ->
+                db.collection(Constants.Collections.STUDIOS)
+                    .document(studioId)
+                    .set(mapOf("profileImageUrl" to url, "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+                    .addOnSuccessListener { success() }
+                    .addOnFailureListener { error -> failure(error.message ?: "Failed to save logo URL") }
+            },
+            onSuccess = onSuccess,
+            onFailure = onFailure
+        )
+    }
+
+    // Uploads a studio's cover image and saves its URL.
+    fun uploadStudioCover(
+        studioId: String,
+        imageUri: Uri,
+        onLoading: (Boolean) -> Unit = {},
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (studioId.isBlank()) {
+            onFailure("Missing studio id")
+            return
+        }
+        uploadAndSaveUrl(
+            path = "studios/$studioId/profile/cover.jpg",
+            fileUri = imageUri,
+            onLoading = onLoading,
+            saveUrl = { url, success, failure ->
+                db.collection(Constants.Collections.STUDIOS)
+                    .document(studioId)
+                    .set(mapOf("coverImageUrl" to url, "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+                    .addOnSuccessListener { success() }
+                    .addOnFailureListener { error -> failure(error.message ?: "Failed to save cover URL") }
+            },
+            onSuccess = onSuccess,
+            onFailure = onFailure
+        )
+    }
+
     // Uploads post media and saves its URL.
     fun uploadPostMedia(
         postId: String,

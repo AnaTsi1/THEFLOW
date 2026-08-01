@@ -8,6 +8,13 @@ data class Post(
     val authorName: String = "",
     val authorProfileImageUrl: String = "",
     val authorType: String = "dancer",
+    // Always the real signed-in person who performed the action, even when posting as a studio.
+    val actorUserId: String = "",
+    // Which account owns this post: "user" (default, and every pre-existing post) or "studio".
+    val authorEntityType: String = "",
+    val authorEntityId: String = "",
+    val authorEntityName: String = "",
+    val authorEntityImageUrl: String = "",
     val text: String = "",
     val mediaUrls: List<String> = emptyList(),
     val mediaItems: List<PostMediaItem> = emptyList(),
@@ -35,7 +42,11 @@ data class Post(
     val commentsCount: Long = 0,
     val originalPostId: String = "",
     val originalAuthorId: String = "",
-    val originalAuthorName: String = ""
+    val originalAuthorName: String = "",
+    val originalAuthorEntityType: String = "",
+    val originalAuthorEntityId: String = "",
+    val originalAuthorEntityName: String = "",
+    val originalAuthorEntityImageUrl: String = ""
 )
 
 data class PostMediaItem(

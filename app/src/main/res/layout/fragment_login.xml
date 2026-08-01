@@ -34,49 +34,11 @@
             android:textColor="@color/flow_text_secondary"
             android:textSize="16sp" />
 
-        <LinearLayout
-            android:id="@+id/login_LAY_role"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/login_BTN_dancer"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_flow_button_primary"
-                android:text="Dancer"
-                android:textColor="@color/flow_surface"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/login_BTN_studio_manager"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="10dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_flow_button_secondary"
-                android:text="Studio Manager"
-                android:textColor="@color/flow_brand" />
-
-            <Button
-                android:id="@+id/login_BTN_admin"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="10dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_flow_button_secondary"
-                android:text="Admin"
-                android:textColor="@color/flow_brand" />
-        </LinearLayout>
-
         <EditText
             android:id="@+id/login_EDT_email"
             android:layout_width="match_parent"
             android:layout_height="54dp"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="20dp"
             android:background="@drawable/bg_flow_input"
             android:hint="Email"
             android:inputType="textEmailAddress"

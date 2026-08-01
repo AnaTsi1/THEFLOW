@@ -14,6 +14,9 @@ import androidx.fragment.app.activityViewModels
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.discovery.DiscoveryItem
+import com.ana.theflow.data.recommendation.GeoPoint
+import com.ana.theflow.data.recommendation.LocationSourceResolver
+import com.ana.theflow.data.recommendation.RecommendationSurface
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.databinding.FragmentDiscoverBinding
@@ -67,23 +70,22 @@ class DiscoverFragment : Fragment(), OnMapReadyCallback {
         if (viewModel.isRefreshing) return
         viewModel.isRefreshing = true
         if (!background) renderLoading()
-        userRepository.loadPreferenceSettings(
-            onSuccess = { settings ->
-                DiscoveryRepository.hydratePreferences(
-                    styles = settings.styles,
-                    level = settings.level,
-                    location = settings.location,
-                    preferredStudios = settings.preferredStudios,
-                    preferredTeachers = settings.preferredTeachers,
-                    preferredDancers = settings.preferredDancers
-                )
+        userRepository.loadRecommendationProfile(
+            onSuccess = { profile ->
+                viewModel.recommendationProfile = profile
+                DiscoveryRepository.hydrateProfile(profile)
                 if (_binding != null && viewModel.hasUsableCache()) render()
+                loadDiscoveryContent()
             },
             onFailure = {
                 viewModel.lastError = it
                 if (_binding != null && viewModel.hasUsableCache()) render()
+                loadDiscoveryContent()
             }
         )
+    }
+
+    private fun loadDiscoveryContent() {
         DiscoveryRepository.loadSavedItems(
             onSuccess = { if (_binding != null) render() },
             onFailure = { if (_binding != null) render() }
@@ -129,11 +131,18 @@ class DiscoverFragment : Fragment(), OnMapReadyCallback {
     private fun loadExternalStudios() {
         if (viewModel.requestedExternal && !viewModel.isStale()) return
         viewModel.requestedExternal = true
+        val context = DiscoveryRepository.recommendationContext(
+            surface = RecommendationSurface.DISCOVER,
+            profileOverride = viewModel.recommendationProfile
+        )
+        val resolved = LocationSourceResolver.resolve(context)
         DiscoveryRepository.loadExternalStudios(
             context = requireContext(),
             query = "dance studio",
-            city = DiscoveryRepository.preferredLocation.ifBlank { "Israel" },
-            location = null as Location?,
+            city = resolved.displayName.ifBlank { "Israel" },
+            location = resolved.point?.toLocation(),
+            usePreferredCityFallback = false,
+            cacheKey = "discover:${viewModel.recommendationProfile.userId}:${resolved.source}:${resolved.cityId}",
             onSuccess = {
                 viewModel.loadedExternal = true
                 viewModel.markLoaded()
@@ -175,16 +184,20 @@ class DiscoverFragment : Fragment(), OnMapReadyCallback {
         binding.discoverLAYSearchResults.removeAllViews()
 
         val shown = mutableSetOf<String>()
-        val recommended = DiscoveryRepository.recommendedItems()
+        val context = DiscoveryRepository.recommendationContext(
+            surface = RecommendationSurface.DISCOVER,
+            profileOverride = viewModel.recommendationProfile
+        )
+        val recommended = DiscoveryRepository.recommendedItems(context)
             .filterNotGoogle()
             .unique()
             .takeUnique(shown, 8)
-        val upcoming = DiscoveryRepository.recommendedItems()
+        val upcoming = DiscoveryRepository.recommendedItems(context)
             .filterNotGoogle()
             .filter { it.isActivity() && it.time.isUserFacing() }
             .unique()
             .takeUnique(shown, 4)
-        val near = DiscoveryRepository.popularNearYou()
+        val near = DiscoveryRepository.popularNearYou(context)
             .filterNotGoogle()
             .unique()
             .takeUnique(shown, 4)
@@ -235,11 +248,22 @@ class DiscoverFragment : Fragment(), OnMapReadyCallback {
                 parent = wrapper,
                 item = item,
                 explanation = DiscoveryRepository.explanationFor(item),
-                onOpen = { (requireActivity() as MainActivity).openDetail(it) },
+                onOpen = { openDiscoveryItem(it) },
                 onSave = { saveItem(it) },
                 cardStyle = DiscoveryCardRenderer.CardStyle.DISCOVER_LIGHT
             )
             parent.addView(wrapper)
+        }
+    }
+
+    // Internal studio listings open their business profile; everything else keeps the
+    // existing Discover detail screen.
+    private fun openDiscoveryItem(item: DiscoveryItem) {
+        val activity = requireActivity() as MainActivity
+        if (item.source != DiscoveryItem.SOURCE_GOOGLE && item.type.equals("Studio", ignoreCase = true)) {
+            activity.openStudioProfile(item.id)
+        } else {
+            activity.openDetail(item)
         }
     }
 
@@ -359,6 +383,13 @@ class DiscoverFragment : Fragment(), OnMapReadyCallback {
         if (isBlank()) return false
         val lower = lowercase()
         return lower != "operational" && lower != "check availability" && lower != "schedule pending"
+    }
+
+    private fun GeoPoint.toLocation(): Location {
+        return Location("discover_resolved_location").apply {
+            latitude = this@toLocation.latitude
+            longitude = this@toLocation.longitude
+        }
     }
 
     override fun onDestroyView() {

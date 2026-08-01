@@ -1,6 +1,15 @@
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.post.Post
+import com.ana.theflow.data.recommendation.RecommendationSurface
+import com.ana.theflow.data.recommendation.PopularitySignals
+import com.ana.theflow.data.recommendation.RecommendationFeatureExtractor
+import com.ana.theflow.data.recommendation.RecommendationFeatures
+import com.ana.theflow.data.recommendation.RecommendationFirestorePaths
+import com.ana.theflow.data.recommendation.RecommendationProfileUpdatePlanner
+import com.ana.theflow.data.recommendation.RecommendationScoreMath
+import com.ana.theflow.data.recommendation.RecommendationSignalType
+import com.ana.theflow.data.recommendation.RecommendationNormalizer
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -33,7 +42,8 @@ class ActivityTrackingRepository {
         if (eventType.isBlank() || targetType.isBlank()) return
 
         val normalizedStrength = normalizedInteractionStrength(interactionStrength)
-        val baseWeight = weightFor(eventType)
+        val signal = RecommendationSignalType.fromWireName(eventType)
+        val baseWeight = signal.baseWeight
         val finalWeight = baseWeight * normalizedStrength
         val eventMetadata = metadata + ("interactionStrength" to normalizedStrength.toString())
         val docRef = db.collection(Constants.Collections.USER_ACTIVITY_EVENTS).document()
@@ -57,10 +67,12 @@ class ActivityTrackingRepository {
                     uid = uid,
                     eventType = eventType,
                     targetType = targetType,
+                    targetId = targetId,
                     danceStyles = danceStyles,
                     location = location,
                     metadata = eventMetadata,
-                    weight = finalWeight,
+                    signal = signal,
+                    interactionStrength = normalizedStrength,
                     onFailure = onFailure
                 )
                 pruneOldActivityEvents(uid)
@@ -147,6 +159,85 @@ class ActivityTrackingRepository {
         )
     }
 
+    fun trackPostCommented(post: Post, interactionStrength: Double = 1.0) {
+        trackEvent(
+            eventType = EventTypes.COMMENT_POST,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata(),
+            interactionStrength = interactionStrength
+        )
+    }
+
+    fun trackPostShared(post: Post, interactionStrength: Double = 1.0) {
+        trackEvent(
+            eventType = EventTypes.SHARE_POST,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata(),
+            interactionStrength = interactionStrength
+        )
+    }
+
+    fun trackPostHidden(post: Post) {
+        trackEvent(
+            eventType = EventTypes.HIDE,
+            targetType = TargetTypes.POST,
+            targetId = post.postId,
+            targetName = post.authorName,
+            metadata = post.interactionMetadata()
+        )
+    }
+
+    fun trackEventRegistration(post: Post, registered: Boolean) {
+        trackEvent(
+            eventType = if (registered) EventTypes.REGISTER_EVENT else EventTypes.CANCEL_REGISTRATION,
+            targetType = TargetTypes.EVENT,
+            targetId = post.postId,
+            targetName = post.activityType.ifBlank { post.text.take(80) },
+            danceStyles = listOf(post.activityType).filter { it.isNotBlank() },
+            location = post.activityLocation,
+            metadata = post.interactionMetadata()
+        )
+    }
+
+    fun trackPostImpressions(posts: List<Post>, surface: RecommendationSurface) {
+        val uid = auth.currentUser?.uid ?: return
+        val visiblePosts = posts.distinctBy { it.postId }.filter { it.postId.isNotBlank() }.take(20)
+        if (visiblePosts.isEmpty()) return
+
+        val batch = db.batch()
+        val profilePath = RecommendationFirestorePaths.profile(uid)
+        visiblePosts.forEach { post ->
+            val impressionRef = db.collection(RecommendationFirestorePaths.impressions(uid))
+                .document("${surface.name.lowercase()}_${scoreKey(post.postId)}")
+            batch.set(
+                impressionRef,
+                mapOf(
+                    "itemId" to post.postId,
+                    "userId" to uid,
+                    "surface" to surface.name,
+                    "shownAt" to FieldValue.serverTimestamp(),
+                    "impressionCount" to FieldValue.increment(1),
+                    "opened" to false,
+                    "interacted" to false
+                ),
+                SetOptions.merge()
+            )
+        }
+        batch.set(
+            db.document(profilePath),
+            mapOf(
+                "seenItemIds" to FieldValue.arrayUnion(*visiblePosts.map { it.postId }.toTypedArray()),
+                "updatedAt" to FieldValue.serverTimestamp()
+            ),
+            SetOptions.merge()
+        )
+        batch.commit()
+    }
+
     // Tracks that a post was created.
     fun trackCreatePost(
         postId: String,
@@ -228,53 +319,104 @@ class ActivityTrackingRepository {
         )
     }
 
+    fun trackShareItem(
+        targetType: String,
+        targetId: String,
+        targetName: String = "",
+        danceStyles: List<String> = emptyList(),
+        location: String = ""
+    ) {
+        trackEvent(
+            eventType = EventTypes.SHARE_ITEM,
+            targetType = targetType,
+            targetId = targetId,
+            targetName = targetName,
+            danceStyles = danceStyles,
+            location = location
+        )
+    }
+
+    fun trackUnfollowUser(targetUserId: String, targetName: String = "") {
+        trackEvent(
+            eventType = EventTypes.UNFOLLOW_USER,
+            targetType = TargetTypes.USER,
+            targetId = targetUserId,
+            targetName = targetName
+        )
+    }
+
     // Updates the user recommendation profile from an event.
     private fun updateRecommendationProfile(
         uid: String,
         eventType: String,
         targetType: String,
+        targetId: String,
         danceStyles: List<String>,
         location: String,
         metadata: Map<String, String>,
-        weight: Double,
+        signal: RecommendationSignalType,
+        interactionStrength: Double,
         onFailure: (String) -> Unit
     ) {
-        val updates = mutableMapOf<String, Any>(
-            "targetTypeScores.${scoreKey(targetType)}" to FieldValue.increment(weight),
-            "updatedAt" to FieldValue.serverTimestamp()
+        val features = buildFeatures(
+            targetId = targetId,
+            targetType = targetType,
+            danceStyles = danceStyles,
+            location = location,
+            metadata = metadata
         )
-
-        danceStyles.forEach { style ->
-            if (style.isNotBlank()) {
-                updates["styleScores.${scoreKey(style)}"] = FieldValue.increment(weight)
+        val plan = RecommendationProfileUpdatePlanner.plan(signal, features, interactionStrength)
+        if (plan.increments.isEmpty() && plan.arrayUnions.isEmpty() && plan.arrayRemoves.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val updates = mutableMapOf<String, Any>(
+            "updatedAt" to FieldValue.serverTimestamp(),
+            "lastUpdatedMillis" to now
+        )
+        plan.increments.forEach { (path, amount) ->
+            updates[path] = FieldValue.increment(amount)
+        }
+        plan.arrayUnions.forEach { (path, values) ->
+            if (values.isNotEmpty()) updates[path] = FieldValue.arrayUnion(*values.toTypedArray())
+        }
+        plan.arrayRemoves.forEach { (path, values) ->
+            if (values.isNotEmpty()) updates[path] = FieldValue.arrayRemove(*values.toTypedArray())
+        }
+        plan.increments.forEach { (path, amount) ->
+            val key = path.replace(".", "_")
+            updates["scoreMetadata.$key.score"] = FieldValue.increment(amount)
+            updates["scoreMetadata.$key.lastUpdatedMillis"] = now
+            updates["scoreMetadata.$key.interactionCount"] = FieldValue.increment(1)
+            updates["scoreMetadata.$key.confidence"] = RecommendationScoreMath.confidence(1)
+            if (amount >= 0.0) {
+                updates["scoreMetadata.$key.positiveCount"] = FieldValue.increment(1)
+            } else {
+                updates["scoreMetadata.$key.negativeCount"] = FieldValue.increment(1)
             }
         }
 
-        if (location.isNotBlank()) {
-            updates["locationScores.${scoreKey(location)}"] = FieldValue.increment(weight)
+        val profileRef = db.document(RecommendationFirestorePaths.profile(uid))
+
+        if (RecommendationProfileUpdatePlanner.shouldDedupe(signal) && plan.dedupeKey.isNotBlank()) {
+            val dedupeRef = db.document(RecommendationFirestorePaths.signalDedupe(uid, plan.dedupeKey))
+            db.runTransaction { transaction ->
+                val existing = transaction.get(dedupeRef)
+                if (!existing.exists()) {
+                    transaction.set(dedupeRef, mapOf("createdAt" to FieldValue.serverTimestamp(), "eventType" to eventType, "targetId" to targetId))
+                    transaction.set(profileRef, updates, SetOptions.merge())
+                }
+            }.addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to update recommendation profile")
+            }
+            return
         }
 
-        metadata["teacher"]?.takeIf { it.isNotBlank() }?.let { teacher ->
-            updates["teacherScores.${scoreKey(teacher)}"] = FieldValue.increment(weight)
-        }
-
-        metadata["studio"]?.takeIf { it.isNotBlank() }?.let { studio ->
-            updates["studioScores.${scoreKey(studio)}"] = FieldValue.increment(weight)
-        }
-
-        metadata["authorType"]?.takeIf { isPostInterestEvent(eventType) && it.isNotBlank() }?.let { authorType ->
-            updates["targetTypeScores.${scoreKey(authorType)}"] = FieldValue.increment(weight)
-        }
-
-        db.collection(Constants.Collections.USERS)
-            .document(uid)
-            .collection("recommendationProfile")
-            .document("main")
+        db.document(RecommendationFirestorePaths.profile(uid))
             .set(updates, SetOptions.merge())
             .addOnFailureListener { error ->
                 onFailure(error.message ?: "Failed to update recommendation profile")
             }
     }
+
     // Keeps only the newest activity events for a user so raw behavior data does not grow forever.
     private fun pruneOldActivityEvents(uid: String) {
         db.collection(Constants.Collections.USER_ACTIVITY_EVENTS)
@@ -292,21 +434,6 @@ class ActivityTrackingRepository {
                 batch.commit()
             }
     }
-    // Returns the recommendation weight for an event type.
-    private fun weightFor(eventType: String): Int {
-        return when (eventType) {
-            EventTypes.VIEW_POST -> 1
-            EventTypes.OPEN_POST -> 3
-            EventTypes.LIKE_POST -> 4
-            EventTypes.VIEW_PROFILE -> 2
-            EventTypes.SEARCH -> 3
-            EventTypes.OPEN_DISCOVERY_ITEM -> 4
-            EventTypes.SAVE_ITEM -> 5
-            EventTypes.FOLLOW_USER -> 8
-            EventTypes.CREATE_POST -> 2
-            else -> 1
-        }
-    }
 
     // Clamps interaction strength to a safe range.
     private fun normalizedInteractionStrength(interactionStrength: Double): Double {
@@ -316,18 +443,7 @@ class ActivityTrackingRepository {
 
     // Converts text into a safe recommendation score key.
     private fun scoreKey(value: String): String {
-        return value.trim()
-            .ifBlank { "unknown" }
-            .replace(Regex("[^A-Za-z0-9_-]"), "_")
-    }
-
-    // Checks whether an event should affect post interests.
-    private fun isPostInterestEvent(eventType: String): Boolean {
-        return eventType == EventTypes.VIEW_POST ||
-            eventType == EventTypes.OPEN_POST ||
-            eventType == EventTypes.LIKE_POST ||
-            eventType == EventTypes.SAVE_ITEM ||
-            eventType == EventTypes.CREATE_POST
+        return RecommendationNormalizer.id(value)
     }
 
     object EventTypes {
@@ -335,11 +451,18 @@ class ActivityTrackingRepository {
         const val VIEW_POST = "view_post"
         const val OPEN_POST = "open_post"
         const val LIKE_POST = "like_post"
+        const val COMMENT_POST = "comment_post"
+        const val SHARE_POST = "share_post"
+        const val SHARE_ITEM = "share_item"
         const val CREATE_POST = "create_post"
         const val OPEN_DISCOVERY_ITEM = "open_discovery_item"
         const val SEARCH = "search"
         const val SAVE_ITEM = "save_item"
         const val FOLLOW_USER = "follow_user"
+        const val UNFOLLOW_USER = "unfollow_user"
+        const val REGISTER_EVENT = "register_event"
+        const val CANCEL_REGISTRATION = "cancel_registration"
+        const val HIDE = "hide"
     }
 
     object TargetTypes {
@@ -361,7 +484,50 @@ class ActivityTrackingRepository {
         return mapOf(
             "authorId" to authorId,
             "authorType" to authorType,
+            "activityType" to activityType,
+            "activityLocation" to activityLocation,
+            "activityLevel" to activityLevel,
+            "collaborationStyle" to collaborationStyle,
+            "collaborationLocation" to collaborationLocation,
+            "postType" to postType,
+            "mediaType" to mediaType,
             "text" to text.take(120)
         ).filterValues { it.isNotBlank() }
+    }
+
+    private fun buildFeatures(
+        targetId: String,
+        targetType: String,
+        danceStyles: List<String>,
+        location: String,
+        metadata: Map<String, String>
+    ): RecommendationFeatures {
+        val styleIds = (
+            danceStyles.map { RecommendationNormalizer.styleId(it) } +
+                listOf(metadata["activityType"].orEmpty(), metadata["collaborationStyle"].orEmpty(), metadata["text"].orEmpty())
+                    .flatMap { extractKnownStyles(it) }
+            ).filter { it.isNotBlank() && it != "unknown" }.toSet()
+        val contentType = metadata["postType"].orEmpty().ifBlank { targetType }
+        return RecommendationFeatures(
+            itemId = targetId,
+            itemType = targetType,
+            styleIds = styleIds,
+            locationId = RecommendationFeatureExtractor.normalizeLocation(location.ifBlank { metadata["activityLocation"].orEmpty().ifBlank { metadata["collaborationLocation"].orEmpty() } }),
+            teacherId = RecommendationNormalizer.id(metadata["teacher"].orEmpty()),
+            studioId = RecommendationNormalizer.id(metadata["studio"].orEmpty()),
+            creatorId = RecommendationNormalizer.id(metadata["authorId"].orEmpty().ifBlank { targetId.takeIf { targetType == TargetTypes.USER }.orEmpty() }),
+            creatorTypeId = RecommendationNormalizer.creatorTypeId(metadata["authorType"].orEmpty().ifBlank { targetType }),
+            contentTypeId = RecommendationNormalizer.contentTypeId(contentType),
+            levelId = RecommendationNormalizer.levelId(metadata["activityLevel"].orEmpty()),
+            mediaTypeId = RecommendationNormalizer.contentTypeId(metadata["mediaType"].orEmpty()),
+            popularitySignals = PopularitySignals()
+        )
+    }
+
+    private fun extractKnownStyles(text: String): List<String> {
+        val lower = text.lowercase()
+        return listOf("Hip Hop", "Heels", "Contemporary", "Ballet", "Jazz", "Salsa", "Bachata")
+            .filter { lower.contains(it.lowercase()) }
+            .map { RecommendationNormalizer.styleId(it) }
     }
 }

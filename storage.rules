@@ -30,6 +30,14 @@ service firebase.storage {
         );
     }
 
+    // Storage rules can't check Firestore studio membership; the real gate is the Firestore
+    // studios/{id} update rule the resulting URL is written through (owner/manager only).
+    match /studios/{studioId}/profile/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn() && isReasonableUpload()
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /studioApplications/{applicationId}/documents/{fileName} {
       allow read, write: if signedIn() && isReasonableUpload();
     }

@@ -3,11 +3,13 @@ package com.ana.theflow.ui.creation
 import android.app.AlertDialog
 import android.view.View
 import android.widget.Button
+import android.widget.AutoCompleteTextView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import com.ana.theflow.utilities.CityOptions
 
 class PostCreationFragment : BaseCreationFragment() {
 
@@ -98,9 +100,43 @@ class PostCreationFragment : BaseCreationFragment() {
     }
 
     private fun editDetail(label: String) {
+        if (label == "Dance style") {
+            showChoiceDetail(label, listOf("Hip Hop", "Heels", "Salsa", "Contemporary", "Afro", "Ballet", "Jazz", "Bachata"))
+            return
+        }
+        if (label == "Feeling") {
+            showChoiceDetail(label, listOf("Practicing", "Teaching", "Rehearsing", "Performing", "Looking for feedback", "Celebrating"))
+            return
+        }
         val input = field(label).apply {
             setText(postDetails[label].orEmpty())
             selectAll()
+        }
+        if (label == "Location") {
+            val cityInput = AutoCompleteTextView(requireContext()).apply {
+                hint = "City"
+                setText(postDetails[label].orEmpty(), false)
+                setTextColor(context.getColor(com.ana.theflow.R.color.flow_ink))
+                setHintTextColor(context.getColor(com.ana.theflow.R.color.flow_text_muted))
+                setBackgroundResource(com.ana.theflow.R.drawable.bg_flow_input)
+                minHeight = 52.dp()
+                setPadding(14.dp(), 0, 14.dp(), 0)
+            }
+            CityOptions.configureCitySelector(requireContext(), cityInput)
+            AlertDialog.Builder(requireContext())
+                .setTitle(label)
+                .setView(cityInput)
+                .setNegativeButton("Clear") { _, _ ->
+                    postDetails.remove(label)
+                    renderSelectedDetails()
+                }
+                .setPositiveButton("Done") { _, _ ->
+                    val city = CityOptions.normalizeOptionalCity(cityInput.text.toString())
+                    if (city.isNullOrBlank()) postDetails.remove(label) else postDetails[label] = city
+                    renderSelectedDetails()
+                }
+                .show()
+            return
         }
         AlertDialog.Builder(requireContext())
             .setTitle(label)
@@ -112,6 +148,20 @@ class PostCreationFragment : BaseCreationFragment() {
             .setPositiveButton("Done") { _, _ ->
                 val value = input.text.toString().trim()
                 if (value.isBlank()) postDetails.remove(label) else postDetails[label] = value
+                renderSelectedDetails()
+            }
+            .show()
+    }
+
+    private fun showChoiceDetail(label: String, options: List<String>) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(label)
+            .setItems(options.toTypedArray()) { _, which ->
+                postDetails[label] = options[which]
+                renderSelectedDetails()
+            }
+            .setNegativeButton("Clear") { _, _ ->
+                postDetails.remove(label)
                 renderSelectedDetails()
             }
             .show()

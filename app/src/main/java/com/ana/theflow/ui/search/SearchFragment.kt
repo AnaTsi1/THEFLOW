@@ -42,6 +42,10 @@ import com.ana.theflow.R
 import com.ana.theflow.data.model.discovery.DiscoveryItem
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.data.recommendation.GeoPoint
+import com.ana.theflow.data.recommendation.LocationSourceResolver
+import com.ana.theflow.data.recommendation.RecommendationSurface
+import com.ana.theflow.data.recommendation.ResolvedLocationSource
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.PostRepository
@@ -172,6 +176,8 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         binding.searchBTNCurrentLocation.setOnClickListener { requestLocationIfNeeded() }
         binding.searchBTNClearMarkers.setOnClickListener {
             viewModel.state.filters = SearchFilters()
+            mapSearchLocationOverride = null
+            mapCameraDirty = false
             setupMapChips()
             loadSearchResults(forceExternal = true)
             Toast.makeText(requireContext(), "Filters cleared", Toast.LENGTH_SHORT).show()
@@ -224,16 +230,10 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         viewModel.state.isBackgroundRefreshing = background
         viewModel.state.isLoading = !background || viewModel.state.results.isEmpty()
         render()
-        userRepository.loadPreferenceSettings(
-            onSuccess = { settings ->
-                DiscoveryRepository.hydratePreferences(
-                    styles = settings.styles,
-                    level = settings.level,
-                    location = settings.location,
-                    preferredStudios = settings.preferredStudios,
-                    preferredTeachers = settings.preferredTeachers,
-                    preferredDancers = settings.preferredDancers
-                )
+        userRepository.loadRecommendationProfile(
+            onSuccess = { profile ->
+                viewModel.state.recommendationProfile = profile
+                DiscoveryRepository.hydrateProfile(profile)
                 if (viewModel.state.viewMode == SearchViewMode.MAP) requestInitialLocation()
                 loadRepositoryData(background)
             },
@@ -327,17 +327,28 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     }
 
     private fun loadExternalResults(query: String, city: String, requestId: Long) {
-        val searchLocation = mapSearchLocationOverride ?: currentLocationIfAllowed() ?: if (viewModel.state.viewMode == SearchViewMode.MAP) fallbackMapCenter().toLocation() else null
+        val manualCity = viewModel.state.filters.selectedLocations().firstOrNull().orEmpty().ifBlank { city }
+        val context = recommendationContextForSearch(manualCity)
+        val resolvedLocation = LocationSourceResolver.resolve(context)
+        val searchLocation = resolvedLocation.point?.toLocation(resolvedLocation.source.name.lowercase())
+        val searchCity = when (resolvedLocation.source) {
+            ResolvedLocationSource.MANUAL_SELECTION,
+            ResolvedLocationSource.PREFERRED_RECOMMENDATION_AREA,
+            ResolvedLocationSource.PROFILE_LOCATION -> resolvedLocation.displayName
+            else -> ""
+        }
+        val filterCity = CityOptions.normalizeOptionalCity(manualCity).orEmpty()
         val locationKey = searchLocation?.let { "${"%.3f".format(it.latitude)},${"%.3f".format(it.longitude)}" }.orEmpty()
-        val key = "${query.trim()}|${city.trim()}|${viewModel.state.filters.selectedStyles().joinToString(",")}|$locationKey"
+        val key = "${query.trim()}|${filterCity}|${searchCity}|${viewModel.state.filters.selectedStyles().joinToString(",")}|$locationKey"
         if (key == lastExternalSearchKey) return
         lastExternalSearchKey = key
         DiscoveryRepository.loadExternalStudios(
             context = requireContext(),
             query = listOf(query, viewModel.state.filters.primaryStyle()).filter { it.isNotBlank() }.joinToString(" "),
-            city = city,
+            city = searchCity,
             location = searchLocation,
-            usePreferredCityFallback = city.isNotBlank() || viewModel.state.viewMode != SearchViewMode.MAP,
+            usePreferredCityFallback = false,
+            cacheKey = "search:${viewModel.state.viewMode}:$key",
             onSuccess = {
                 if (_binding == null) return@loadExternalStudios
                 if (requestId != viewModel.state.searchRequestId) return@loadExternalStudios
@@ -345,7 +356,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
                     query = query,
                     style = viewModel.state.filters.primaryStyle(),
                     level = viewModel.state.filters.level,
-                    location = city
+                    location = filterCity
                 ).filterByCategory(viewModel.state.selectedCategory).filterByExtraFilters(viewModel.state.filters).unique()
                     .mapCapableForMapIfNeeded()
                 render()
@@ -612,7 +623,12 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         val dialog = AlertDialog.Builder(context).setView(content).create()
         content.addView(actionButton("View Details") {
             dialog.dismiss()
-            (requireActivity() as MainActivity).openDetail(item)
+            val activity = requireActivity() as MainActivity
+            if (item.source != DiscoveryItem.SOURCE_GOOGLE && item.type.equals("Studio", ignoreCase = true)) {
+                activity.openStudioProfile(item.id)
+            } else {
+                activity.openDetail(item)
+            }
         })
         if (item.googleMapsUrl.isNotBlank()) {
             content.addView(actionButton("Open in Google Maps") {
@@ -635,7 +651,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         val options = when (focus) {
             "Style" -> listOf("Hip Hop", "Heels", "Contemporary", "Ballet", "Jazz", "Salsa", "Bachata")
             "Level" -> listOf("Beginner", "Intermediate", "Advanced", "Open Level", "All levels")
-            "Location" -> listOf("Current Location", "Saved City", "Tel Aviv", "Jerusalem", "Haifa", "Ramat Gan")
+            "Location" -> listOf("Current Location", "Saved City") + CityOptions.israelCities
             "Distance" -> listOf("1 km", "3 km", "5 km", "10 km", "20 km")
             "Date" -> listOf("Today", "Tomorrow", "This Week", "This Weekend")
             "Time" -> listOf("Morning", "Afternoon", "Evening")
@@ -958,6 +974,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             onOpen = { (requireActivity() as MainActivity).openPost(it.postId) },
             onMediaOpen = { url, mediaType -> (requireActivity() as MainActivity).openMediaViewer(url, mediaType) },
             onAuthorOpen = { authorId -> (requireActivity() as MainActivity).openUserProfile(authorId) },
+            onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) },
             cardStyle = PostCardRenderer.CardStyle.FLOW_LIGHT
         )
     }
@@ -1140,6 +1157,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             "Location" -> {
                 filters.location = ""
                 if (!filters.locations.add(value)) filters.locations.remove(value)
+                mapSearchLocationOverride = null
             }
             "Date" -> {
                 filters.date = ""
@@ -1160,7 +1178,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     private fun applyFilterValue(label: String, value: String) {
         val filters = viewModel.state.filters
         val normalized = when (value) {
-            "Saved City" -> DiscoveryRepository.preferredLocation
+            "Saved City" -> viewModel.state.recommendationProfile.preferredRecommendationArea.ifBlank { DiscoveryRepository.preferredLocation }
             "Current Location" -> {
                 requestLocationIfNeeded()
                 ""
@@ -1179,6 +1197,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             "Location" -> {
                 filters.locations.clear()
                 filters.location = normalized
+                if (normalized.isNotBlank()) mapSearchLocationOverride = null
             }
             "Distance" -> filters.distance = normalized
             "Date" -> {
@@ -1213,6 +1232,13 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
         }, "Share"))
+        activityTrackingRepository.trackShareItem(
+            targetType = item.displayType.ifBlank { item.type }.ifBlank { "discovery_item" },
+            targetId = item.id,
+            targetName = item.title,
+            danceStyles = listOf(item.style).filter { it.isNotBlank() },
+            location = item.location
+        )
     }
 
     private fun List<DiscoveryItem>.filterByQuery(query: String): List<DiscoveryItem> {
@@ -1354,16 +1380,38 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     }
 
     private fun fallbackMapCenter(): LatLng {
-        return when (DiscoveryRepository.preferredLocation.lowercase()) {
-            "jerusalem", "ירושלים" -> LatLng(31.7683, 35.2137)
-            "haifa", "חיפה" -> LatLng(32.7940, 34.9896)
-            "ramat gan", "רמת גן" -> LatLng(32.0684, 34.8248)
-            else -> DEFAULT_MAP_CENTER
-        }
+        val resolved = LocationSourceResolver.resolve(
+            recommendationContextForSearch(viewModel.state.filters.selectedLocations().firstOrNull().orEmpty())
+        )
+        val point = resolved.point ?: GeoPoint(DEFAULT_MAP_CENTER.latitude, DEFAULT_MAP_CENTER.longitude)
+        return LatLng(point.latitude, point.longitude)
     }
 
     private fun LatLng.toLocation(): Location {
         return Location("map_fallback").apply {
+            latitude = this@toLocation.latitude
+            longitude = this@toLocation.longitude
+        }
+    }
+
+    private fun recommendationContextForSearch(manualCity: String) = DiscoveryRepository.recommendationContext(
+        surface = if (viewModel.state.viewMode == SearchViewMode.MAP) RecommendationSurface.MAP else RecommendationSurface.SEARCH,
+        manualSelectedLocation = CityOptions.normalizeOptionalCity(manualCity).orEmpty(),
+        currentDeviceLocation = currentLocationIfAllowed()?.toGeoPoint(),
+        mapCameraLocation = mapSearchLocationOverride?.toGeoPoint(),
+        selectedFilters = mapOf(
+            "query" to viewModel.state.query,
+            "location" to manualCity,
+            "style" to viewModel.state.filters.primaryStyle(),
+            "level" to viewModel.state.filters.level
+        ).filterValues { it.isNotBlank() },
+        profileOverride = viewModel.state.recommendationProfile
+    )
+
+    private fun Location.toGeoPoint(): GeoPoint = GeoPoint(latitude, longitude)
+
+    private fun GeoPoint.toLocation(provider: String): Location {
+        return Location(provider).apply {
             latitude = this@toLocation.latitude
             longitude = this@toLocation.longitude
         }

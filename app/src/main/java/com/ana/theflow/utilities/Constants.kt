@@ -7,6 +7,8 @@ object Constants {
         const val POSTS = "posts"
         const val STUDIOS = "studios"
         const val STUDIO_CLAIMS = "studioClaims"
+        const val STUDIO_REQUESTS = "studioRequests"
+        const val PERMISSION_GRANTS = "permissionGrants"
         const val PROFESSIONAL_APPLICATIONS = "professionalApplications"
         const val STUDIO_APPLICATIONS = "studioApplications"
         const val USER_ACTIVITY_EVENTS = "userActivityEvents"
@@ -25,6 +27,7 @@ object Constants {
 
     enum class UserRole(val firestoreValue: String) {
         DANCER("dancer"),
+        @Deprecated("Legacy value; studio permissions are derived from managedStudioIds, never from role.")
         STUDIO_MANAGER("studio_manager"),
         ADMIN("admin")
     }
@@ -32,6 +35,7 @@ object Constants {
     enum class ProfessionalApplicationType(val firestoreValue: String) {
         VERIFIED_TEACHER("verified_teacher"),
         CHOREOGRAPHER("choreographer"),
+        @Deprecated("Studio access is granted through studio requests (create/claim), not professional applications.")
         STUDIO("studio")
     }
 
@@ -39,5 +43,10 @@ object Constants {
         PENDING,
         APPROVED,
         REJECTED
+    }
+
+    object EntityType {
+        const val USER = "user"
+        const val STUDIO = "studio"
     }
 }

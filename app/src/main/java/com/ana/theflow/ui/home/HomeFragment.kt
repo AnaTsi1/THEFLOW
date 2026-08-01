@@ -1,6 +1,7 @@
 // Home feed screen that shows recommended and followed posts with social interactions.
 package com.ana.theflow.ui.home
 
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -14,14 +15,17 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.view.GravityCompat
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.data.recommendation.RecommendationSurface
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.ReportRepository
 import com.ana.theflow.data.repository.UserRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.databinding.FragmentHomeBinding
 import com.ana.theflow.ui.common.PostCardRenderer
 import com.ana.theflow.ui.common.ResponsiveLayout
@@ -41,6 +45,10 @@ class HomeFragment : Fragment() {
     private val reportRepository = ReportRepository()
     private val viewModel: HomeViewModel by viewModels()
     private var currentUser: User? = null
+    private val impressionTrackedThisSession = mutableSetOf<String>()
+    private val activeAccountListener: (ActiveAccount) -> Unit = {
+        if (_binding != null) renderActiveAccountChip()
+    }
 
     // Creates and returns the fragment view.
     override fun onCreateView(
@@ -73,8 +81,15 @@ class HomeFragment : Fragment() {
             binding.homeDRAWER.openDrawer(GravityCompat.START)
         }
         setupSideMenu()
+        binding.homeLAYAccount.setOnClickListener {
+            (requireActivity() as MainActivity).openAccountSwitcher()
+        }
+        renderActiveAccountChip()
         binding.homeSWIPERefresh.setOnRefreshListener {
             loadFeed(forceRefresh = true)
+        }
+        binding.homeSCROLLFeed.setOnScrollChangeListener { _, _, _, _, _ ->
+            scheduleVisibleImpressionTracking()
         }
         binding.homeSWIPERefresh.setColorSchemeResources(R.color.neon_purple)
         ResponsiveLayout.constrainToReadableWidth(
@@ -85,6 +100,7 @@ class HomeFragment : Fragment() {
         )
         ResponsiveLayout.ensureTouchTarget(binding.homeBTNCreatePost)
         ResponsiveLayout.ensureTouchTarget(binding.homeBTNMenu)
+        ActiveAccountHolder.addListener(activeAccountListener)
         loadCurrentUser()
         renderSelectedTab()
         if (viewModel.hasCache()) {
@@ -107,30 +123,35 @@ class HomeFragment : Fragment() {
         val activity = requireActivity() as MainActivity
         fun openFromDrawer(selectedRow: View, action: () -> Unit) {
             listOf(
+                binding.homeMENUSwitchAccount,
                 binding.homeMENUEvents,
                 binding.homeMENUJobs,
                 binding.homeMENUSaved,
-                binding.homeMENUMessages,
-                binding.homeMENUNotifications,
                 binding.homeMENUSettings
             ).forEach { it.isSelected = it == selectedRow }
             binding.homeDRAWER.closeDrawer(GravityCompat.START)
             binding.root.postDelayed(action, 180L)
         }
         listOf(
+            binding.homeMENUSwitchAccount,
             binding.homeMENUEvents,
             binding.homeMENUJobs,
             binding.homeMENUSaved,
-            binding.homeMENUMessages,
-            binding.homeMENUNotifications,
             binding.homeMENUSettings
         ).forEach { ResponsiveLayout.ensureTouchTarget(it) }
+        binding.homeMENUSwitchAccount.setOnClickListener { openFromDrawer(it) { activity.openAccountSwitcher() } }
         binding.homeMENUEvents.setOnClickListener { openFromDrawer(it) { activity.openEvents() } }
         binding.homeMENUJobs.setOnClickListener { openFromDrawer(it) { activity.openJobs() } }
         binding.homeMENUSaved.setOnClickListener { openFromDrawer(it) { activity.openSavedItems() } }
-        binding.homeMENUMessages.setOnClickListener { openFromDrawer(it) { activity.openConversations() } }
-        binding.homeMENUNotifications.setOnClickListener { openFromDrawer(it) { activity.openNotifications() } }
         binding.homeMENUSettings.setOnClickListener { openFromDrawer(it) { activity.openSettings() } }
+    }
+
+    // Reflects the currently active account ("Personal" or the active studio's name) in the chip.
+    private fun renderActiveAccountChip() {
+        val summary = (requireActivity() as MainActivity).activeAccountSummary()
+        binding.homeLBLAccount.text = summary?.displayName?.takeIf { summary.subtitle != "Personal account" }
+            ?.let { "Posting as: $it" }
+            ?: getString(R.string.home_posting_as_personal)
     }
 
     // Loads the signed-in user for comment attribution.
@@ -293,6 +314,44 @@ class HomeFragment : Fragment() {
         if (hadRenderedContent) {
             binding.homeSCROLLFeed.post { binding.homeSCROLLFeed.scrollTo(0, previousScrollY) }
         }
+        scheduleVisibleImpressionTracking()
+    }
+
+    private fun scheduleVisibleImpressionTracking() {
+        val binding = _binding ?: return
+        binding.homeLAYPosts.removeCallbacks(trackVisibleImpressionsRunnable)
+        binding.homeLAYPosts.postDelayed(trackVisibleImpressionsRunnable, IMPRESSION_VISIBLE_DELAY_MS)
+    }
+
+    private val trackVisibleImpressionsRunnable = Runnable {
+        val binding = _binding ?: return@Runnable
+        if (!isResumed || viewModel.selectedFeed != HomeFeedTab.FOR_YOU) return@Runnable
+        val visiblePosts = mutableListOf<Post>()
+        val viewport = Rect()
+        binding.homeSCROLLFeed.getGlobalVisibleRect(viewport)
+        for (index in 0 until binding.homeLAYPosts.childCount) {
+            val child = binding.homeLAYPosts.getChildAt(index)
+            val item = viewModel.items().getOrNull(index) ?: continue
+            val key = "${viewModel.selectedFeed.name}:${item.post.postId}"
+            if (key in impressionTrackedThisSession) continue
+            if (isMeaningfullyVisible(child, viewport)) {
+                impressionTrackedThisSession.add(key)
+                visiblePosts.add(item.post)
+            }
+            if (visiblePosts.size >= MAX_IMPRESSIONS_PER_BATCH) break
+        }
+        if (visiblePosts.isNotEmpty()) {
+            activityTrackingRepository.trackPostImpressions(visiblePosts, RecommendationSurface.FOR_YOU)
+        }
+    }
+
+    private fun isMeaningfullyVisible(view: View, viewport: Rect): Boolean {
+        if (!view.isShown || view.height <= 0) return false
+        val rect = Rect()
+        if (!view.getGlobalVisibleRect(rect)) return false
+        val visibleHeight = rect.height().coerceAtMost(view.height)
+        val visibleRatio = visibleHeight.toFloat() / view.height.toFloat()
+        return visibleRatio >= MIN_VISIBLE_IMPRESSION_RATIO && Rect.intersects(rect, viewport)
     }
 
     private fun hydrateFeedPost(post: Post, requestId: Long, requestedFeed: HomeFeedTab) {
@@ -420,6 +479,7 @@ class HomeFragment : Fragment() {
             onAuthorOpen = { authorId ->
                 (requireActivity() as MainActivity).openUserProfile(authorId)
             },
+            onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) },
             cardStyle = PostCardRenderer.CardStyle.FLOW_LIGHT
         )
     }
@@ -626,7 +686,6 @@ class HomeFragment : Fragment() {
         postRepository.toggleSave(
             post = post,
             onSuccess = { isSaved ->
-                if (isSaved) activityTrackingRepository.trackPostSaved(post)
                 viewModel.updateItem(post.postId) { it.copy(isSaved = isSaved) }
                 renderFeed()
             },
@@ -805,8 +864,16 @@ class HomeFragment : Fragment() {
     // Clears the fragment binding when the view is destroyed.
     override fun onDestroyView() {
         viewModel.saveScroll(binding.homeSCROLLFeed.scrollY)
+        binding.homeLAYPosts.removeCallbacks(trackVisibleImpressionsRunnable)
+        ActiveAccountHolder.removeListener(activeAccountListener)
         super.onDestroyView()
         _binding = null
+    }
+
+    private companion object {
+        const val IMPRESSION_VISIBLE_DELAY_MS = 1200L
+        const val MIN_VISIBLE_IMPRESSION_RATIO = 0.5f
+        const val MAX_IMPRESSIONS_PER_BATCH = 8
     }
 }
 

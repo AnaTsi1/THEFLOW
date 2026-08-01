@@ -1,9 +1,11 @@
 package com.ana.theflow.data.repository
 
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.jobs.DanceJob
 import com.ana.theflow.data.model.jobs.JobApplication
 import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
@@ -13,11 +15,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 
+// Jobs are always published by a business (studio) account - never a personal profile.
 class JobRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
-    private val userRepository = UserRepository()
     private val notificationRepository = NotificationRepository()
 
     fun loadActiveJobs(
@@ -61,23 +63,35 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load job") }
     }
 
-    fun canPublishJobs(onSuccess: (Boolean) -> Unit, onFailure: (String) -> Unit = {}) {
+    // Whether the given account may publish jobs. Only studio accounts the caller manages
+    // (or an admin) can - personal accounts never can, per "jobs belong to business accounts".
+    fun canPublishJobsAs(account: ActiveAccount = ActiveAccountHolder.current(), onSuccess: (Boolean) -> Unit) {
         val uid = auth.currentUser?.uid
-        if (uid == null) {
+        if (uid == null || account !is ActiveAccount.StudioAccount) {
             onSuccess(false)
             return
         }
         db.collection(Constants.Collections.USERS).document(uid).get()
-            .addOnSuccessListener { document -> onSuccess(document.canPublishJobs()) }
-            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load job permissions") }
+            .addOnSuccessListener { document ->
+                val managedStudioIds = (document.get("managedStudioIds") as? List<*>).orEmpty().mapNotNull { it as? String }
+                onSuccess(account.studioId in managedStudioIds)
+            }
+            .addOnFailureListener { onSuccess(false) }
     }
 
+    // Creates a job posting on behalf of a studio the signed-in user currently manages.
     fun createJob(
+        studioId: String,
         title: String,
-        employerName: String,
-        city: String,
         danceStyles: List<String>,
         description: String,
+        workType: String = DanceJob.WORK_ON_SITE,
+        jobType: String = DanceJob.TYPE_FREELANCE,
+        experienceLevel: String = "",
+        requirements: List<String> = emptyList(),
+        paymentText: String = "",
+        contactMethod: String = "",
+        externalApplyUrl: String = "",
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -86,48 +100,60 @@ class JobRepository {
             onFailure("User is not logged in")
             return
         }
-        val cleanTitle = title.trim()
-        if (cleanTitle.isBlank() || employerName.trim().isBlank() || city.trim().isBlank() || description.trim().isBlank()) {
-            onFailure("Add a title, employer, city, and description")
+        if (studioId.isBlank()) {
+            onFailure("Choose which studio is posting this job")
             return
         }
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank() || description.trim().isBlank()) {
+            onFailure("Add a title and description")
+            return
+        }
+
         db.collection(Constants.Collections.USERS).document(uid).get()
             .addOnSuccessListener { userDocument ->
-                if (!userDocument.canPublishJobs()) {
-                    onFailure("Only verified choreographers or authorized studio managers can post jobs")
+                val managedStudioIds = (userDocument.get("managedStudioIds") as? List<*>).orEmpty().mapNotNull { it as? String }
+                val isAdmin = userDocument.getString("role").orEmpty()
+                    .equals(Constants.UserRole.ADMIN.firestoreValue, ignoreCase = true)
+                if (!isAdmin && studioId !in managedStudioIds) {
+                    onFailure("You do not manage this studio")
                     return@addOnSuccessListener
                 }
-                val managedStudioIds = ((userDocument.get("managedStudioIds") as? List<*>).orEmpty())
-                    .mapNotNull { it as? String }
-                    .filter { it.isNotBlank() }
-                val verifiedChoreographer = userDocument.getBoolean("verifiedChoreographer") == true
-                val studioId = if (verifiedChoreographer) "" else managedStudioIds.firstOrNull().orEmpty()
-                val docRef = db.collection(Constants.Collections.JOBS).document()
-                val job = mapOf(
-                    "jobId" to docRef.id,
-                    "title" to cleanTitle,
-                    "employerName" to employerName.trim(),
-                    "employerImageUrl" to userDocument.getString("profileImageUrl").orEmpty(),
-                    "city" to city.trim(),
-                    "location" to city.trim(),
-                    "workType" to DanceJob.WORK_ON_SITE,
-                    "jobType" to DanceJob.TYPE_FREELANCE,
-                    "danceStyles" to danceStyles.filter { it.isNotBlank() }.ifEmpty { listOf("Dance") },
-                    "experienceLevel" to "Open level",
-                    "description" to description.trim(),
-                    "requirements" to emptyList<String>(),
-                    "paymentText" to "",
-                    "contactMethod" to "",
-                    "externalApplyUrl" to "",
-                    "status" to DanceJob.STATUS_ACTIVE,
-                    "creatorId" to uid,
-                    "studioId" to studioId,
-                    "createdAt" to FieldValue.serverTimestamp(),
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-                docRef.set(job)
-                    .addOnSuccessListener { onSuccess(docRef.id) }
-                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to create job") }
+                db.collection(Constants.Collections.STUDIOS).document(studioId).get()
+                    .addOnSuccessListener { studioDocument ->
+                        if (!studioDocument.exists()) {
+                            onFailure("Studio was not found")
+                            return@addOnSuccessListener
+                        }
+                        val city = studioDocument.getString("city").orEmpty()
+                        val docRef = db.collection(Constants.Collections.JOBS).document()
+                        val job = mapOf(
+                            "jobId" to docRef.id,
+                            "title" to cleanTitle,
+                            "employerName" to studioDocument.getString("displayName").orEmpty().ifBlank { "Studio" },
+                            "employerImageUrl" to studioDocument.getString("profileImageUrl").orEmpty(),
+                            "city" to city,
+                            "location" to city,
+                            "workType" to workType,
+                            "jobType" to jobType,
+                            "danceStyles" to danceStyles.filter { it.isNotBlank() }.ifEmpty { listOf("Dance") },
+                            "experienceLevel" to experienceLevel.ifBlank { "Open level" },
+                            "description" to description.trim(),
+                            "requirements" to requirements.filter { it.isNotBlank() },
+                            "paymentText" to paymentText.trim(),
+                            "contactMethod" to contactMethod.trim(),
+                            "externalApplyUrl" to externalApplyUrl.trim(),
+                            "status" to DanceJob.STATUS_ACTIVE,
+                            "creatorId" to uid,
+                            "studioId" to studioId,
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                        docRef.set(job)
+                            .addOnSuccessListener { onSuccess(docRef.id) }
+                            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to create job") }
+                    }
+                    .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load studio") }
             }
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load job permissions") }
     }
@@ -266,19 +292,39 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load applications") }
     }
 
-    fun loadMyListings(onSuccess: (List<DanceJob>) -> Unit, onFailure: (String) -> Unit) {
-        val uid = auth.currentUser?.uid
-        if (uid == null) {
-            onFailure("User is not logged in")
+    // Loads job listings for the active account: a studio sees everything it (any of its
+    // managers) posted; a personal account never has listings of its own.
+    fun loadListings(
+        account: ActiveAccount = ActiveAccountHolder.current(),
+        onSuccess: (List<DanceJob>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (account !is ActiveAccount.StudioAccount) {
+            onSuccess(emptyList())
             return
         }
         db.collection(Constants.Collections.JOBS)
-            .whereEqualTo("creatorId", uid)
+            .whereEqualTo("studioId", account.studioId)
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(40)
             .get()
             .addOnSuccessListener { snapshot -> onSuccess(snapshot.documents.mapNotNull { it.toJob() }) }
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load listings") }
+    }
+
+    // Loads applicants for every job a studio has posted.
+    fun loadApplicationsForStudio(studioId: String, onSuccess: (List<JobApplication>) -> Unit, onFailure: (String) -> Unit) {
+        if (studioId.isBlank()) {
+            onSuccess(emptyList())
+            return
+        }
+        db.collection(Constants.Collections.JOB_APPLICATIONS)
+            .whereEqualTo("studioId", studioId)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(80)
+            .get()
+            .addOnSuccessListener { snapshot -> onSuccess(snapshot.documents.mapNotNull { it.toApplication() }) }
+            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load applicants") }
     }
 
     fun withdrawApplication(applicationId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
@@ -337,13 +383,6 @@ class JobRepository {
 
     private fun DocumentSnapshot.toApplication(): JobApplication? {
         return toObject(JobApplication::class.java)?.copy(applicationId = id)
-    }
-
-    private fun DocumentSnapshot.canPublishJobs(): Boolean {
-        val managedStudioIds = (get("managedStudioIds") as? List<*>).orEmpty()
-        return getString("role").orEmpty().equals(Constants.UserRole.ADMIN.firestoreValue, ignoreCase = true) ||
-            getBoolean("verifiedChoreographer") == true ||
-            managedStudioIds.isNotEmpty()
     }
 
     private fun DanceJob.matches(query: String): Boolean {

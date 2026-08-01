@@ -6,10 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
@@ -155,68 +152,14 @@ class DetailFragment : Fragment() {
         )
     }
 
-    // Shows the dialog for claiming a studio.
+    // Opens the studio claim request screen for this item.
     private fun showClaimStudioDialog(selected: DiscoveryItem) {
-        val context = requireContext()
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 16, 48, 0)
-        }
-
-        val justificationInput = EditText(context).apply {
-            hint = "Why is this studio yours?"
-            minLines = 2
-        }
-        val verificationInput = EditText(context).apply {
-            hint = "Verification details: phone, website, Instagram..."
-            minLines = 2
-        }
-
-        container.addView(justificationInput)
-        container.addView(verificationInput)
-
-        AlertDialog.Builder(context)
-            .setTitle("Claim ${selected.studio}")
-            .setView(container)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Submit") { _, _ ->
-                submitStudioClaim(
-                    selected = selected,
-                    justification = justificationInput.text.toString(),
-                    verificationDetails = verificationInput.text.toString()
-                )
-            }
-            .show()
-    }
-
-    // Sends the studio claim request.
-    private fun submitStudioClaim(
-        selected: DiscoveryItem,
-        justification: String,
-        verificationDetails: String
-    ) {
-        binding.detailBTNClaimStudio.isEnabled = false
-        binding.detailBTNClaimStudio.text = "Submitting..."
-
-        studioClaimRepository.submitClaim(
+        (requireActivity() as MainActivity).openStudioRequest(
+            mode = "claim",
             studioId = selected.id,
             studioName = selected.studio,
             googlePlaceId = selected.googlePlaceId,
-            address = selected.address,
-            justification = justification,
-            verificationDetails = verificationDetails,
-            onSuccess = {
-                if (_binding == null) return@submitClaim
-                binding.detailBTNClaimStudio.text = "Claim Pending"
-                binding.detailBTNClaimStudio.isEnabled = false
-                Toast.makeText(requireContext(), "Claim request submitted for approval", Toast.LENGTH_LONG).show()
-            },
-            onFailure = { error ->
-                if (_binding == null) return@submitClaim
-                binding.detailBTNClaimStudio.isEnabled = true
-                binding.detailBTNClaimStudio.text = "Claim Studio"
-                Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not submit this claim."), Toast.LENGTH_LONG).show()
-            }
+            address = selected.address
         )
     }
 

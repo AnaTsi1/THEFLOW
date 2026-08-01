@@ -8,14 +8,12 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import com.ana.theflow.databinding.FragmentRegisterBinding
-import com.ana.theflow.utilities.Constants
 
 class RegisterFragment : Fragment() {
 
     private var _binding: FragmentRegisterBinding? = null
     private val binding get() = _binding!!
     private val authViewModel: AuthViewModel by activityViewModels()
-    private var selectedRole = Constants.UserRole.DANCER
 
     // Creates and returns the fragment view.
     override fun onCreateView(
@@ -29,17 +27,8 @@ class RegisterFragment : Fragment() {
 
     // Connects the screen UI after the view is ready.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        setupScreenTitle()
         observeViewModel()
         setupClickListeners()
-    }
-
-    // Sets the title for the registration screen.
-    private fun setupScreenTitle() {
-        binding.registerLBLTitle.text = when (selectedRole) {
-            Constants.UserRole.STUDIO_MANAGER -> "Create Studio Manager Account"
-            else -> "Create Dancer Account"
-        }
     }
 
     // Observes UI state changes from the view model.
@@ -56,16 +45,6 @@ class RegisterFragment : Fragment() {
 
     // Connects buttons to their click actions.
     private fun setupClickListeners() {
-        binding.registerBTNDancer.setOnClickListener {
-            selectedRole = Constants.UserRole.DANCER
-            renderRoleSelection()
-        }
-
-        binding.registerBTNStudioManager.setOnClickListener {
-            selectedRole = Constants.UserRole.STUDIO_MANAGER
-            renderRoleSelection()
-        }
-
         binding.registerBTNSubmit.setOnClickListener {
             registerUser()
         }
@@ -75,14 +54,14 @@ class RegisterFragment : Fragment() {
         }
     }
 
-    // Starts registration with the entered details.
+    // Starts registration with the entered details. Every new account is simply a dancer -
+    // professional and studio-manager permissions are always granted later by an admin.
     private fun registerUser() {
         authViewModel.register(
             firstName = binding.registerEDTFirstName.text.toString().trim(),
             lastName = binding.registerEDTLastName.text.toString().trim(),
             email = binding.registerEDTEmail.text.toString().trim(),
             password = binding.registerEDTPassword.text.toString(),
-            role = selectedRole,
             onSuccess = {
                 Toast.makeText(requireContext(), "Account created successfully", Toast.LENGTH_SHORT).show()
                 (requireActivity() as LoginActivity).openMainApp(
@@ -90,22 +69,6 @@ class RegisterFragment : Fragment() {
                 )
             }
         )
-    }
-
-    // Updates the role selection buttons.
-    private fun renderRoleSelection() {
-        val dancerSelected = selectedRole == Constants.UserRole.DANCER
-        setupScreenTitle()
-        binding.registerBTNDancer.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_flow_button_primary else com.ana.theflow.R.drawable.bg_flow_button_secondary
-        )
-        binding.registerBTNStudioManager.setBackgroundResource(
-            if (dancerSelected) com.ana.theflow.R.drawable.bg_flow_button_secondary else com.ana.theflow.R.drawable.bg_flow_button_primary
-        )
-        binding.registerBTNDancer.setTextColor(requireContext().getColor(if (dancerSelected) com.ana.theflow.R.color.flow_surface else com.ana.theflow.R.color.flow_brand))
-        binding.registerBTNStudioManager.setTextColor(requireContext().getColor(if (dancerSelected) com.ana.theflow.R.color.flow_brand else com.ana.theflow.R.color.flow_surface))
-        binding.registerBTNDancer.setTypeface(null, if (dancerSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-        binding.registerBTNStudioManager.setTypeface(null, if (dancerSelected) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
     }
 
     // Clears the fragment binding when the view is destroyed.
