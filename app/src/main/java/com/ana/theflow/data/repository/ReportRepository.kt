@@ -12,7 +12,8 @@ class ReportRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
-    // Reports a post, comment, event, or user without modifying the reported target.
+    // Files a report against a post, comment, event, or user - doesn't touch the reported content
+    // itself. If the same report already exists, we just treat it as a success instead of erroring.
     fun reportContent(
         targetType: String,
         targetId: String,

@@ -1,5 +1,9 @@
+// Defines every behavioral signal the app can track (like, save, hide, follow, ...) and how each
+// one translates into concrete Firestore updates to a user's learned recommendation profile.
 package com.ana.theflow.data.recommendation
 
+// One thing a user can do that we track - each has a wire name (what we store in Firestore) and
+// a base weight (how much it should move their score).
 enum class RecommendationSignalType(val wireName: String, val baseWeight: Double) {
     IMPRESSION("impression", RecommendationSignalWeights.IMPRESSION),
     FAST_SKIP("fast_skip", RecommendationSignalWeights.FAST_SKIP),
@@ -23,6 +27,7 @@ enum class RecommendationSignalType(val wireName: String, val baseWeight: Double
     SEARCH("search", RecommendationSignalWeights.SEARCH);
 
     companion object {
+        // Maps a raw event name (current or an older/legacy one) to the signal type it represents.
         fun fromWireName(value: String): RecommendationSignalType {
             return values().firstOrNull { it.wireName == value } ?: when (value) {
                 "view_post" -> SHORT_VIEW
@@ -40,6 +45,7 @@ enum class RecommendationSignalType(val wireName: String, val baseWeight: Double
     }
 }
 
+// The actual Firestore field updates one tracked signal should produce on a user's profile.
 data class RecommendationProfileUpdatePlan(
     val increments: Map<String, Double> = emptyMap(),
     val arrayUnions: Map<String, List<String>> = emptyMap(),
@@ -48,7 +54,12 @@ data class RecommendationProfileUpdatePlan(
     val dedupeKey: String = ""
 )
 
+// Turns a tracked behavior into the specific score updates it should cause.
 object RecommendationProfileUpdatePlanner {
+    // Works out the update plan for one signal - which score dimensions (style, creator, studio,
+    // location, etc) move and by how much, plus which lists (hidden/registered/seen items) change.
+    // Different actions hit different dimensions - hiding something penalizes its creator and
+    // content type, while registering for an event boosts style, location, teacher, and studio all at once.
     fun plan(
         signal: RecommendationSignalType,
         features: RecommendationFeatures,
@@ -60,6 +71,8 @@ object RecommendationProfileUpdatePlanner {
         val arrayRemoves = linkedMapOf<String, List<String>>()
         val metadataKeys = linkedSetOf<String>()
 
+        // Accumulates a capped score increment for one dimension (e.g. "styleScores.hip_hop"),
+        // skipping blank/unknown keys and no-op zero values.
         fun add(path: String, key: String, value: Double) {
             if (key.isBlank() || key == "unknown" || value == 0.0) return
             val fullPath = "$path.$key"
@@ -134,6 +147,7 @@ object RecommendationProfileUpdatePlanner {
         )
     }
 
+    // Whether this action needs dedupe protection, so liking/saving the same item twice doesn't count twice.
     fun shouldDedupe(signal: RecommendationSignalType): Boolean {
         return signal in setOf(
             RecommendationSignalType.LIKE,
@@ -147,6 +161,7 @@ object RecommendationProfileUpdatePlanner {
         )
     }
 
+    // Builds the key we check against to catch a repeated signal on the same item.
     private fun dedupeKey(signal: RecommendationSignalType, features: RecommendationFeatures): String {
         return RecommendationNormalizer.id("${signal.wireName}_${features.itemId}")
     }

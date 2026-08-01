@@ -1,5 +1,9 @@
+// Everything to do with reading and managing a studio's business profile - loading, searching,
+// following/unfollowing, and editing the profile fields a manager is allowed to change.
 package com.ana.theflow.data.repository
 
+import com.ana.theflow.data.model.messaging.PartyRef
+import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.studio.Studio
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.utilities.Constants
@@ -14,6 +18,7 @@ class StudioRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val notificationRepository = NotificationRepository()
 
     // Loads one studio by id.
     fun loadStudio(studioId: String, onSuccess: (Studio) -> Unit, onFailure: (String) -> Unit) {
@@ -97,6 +102,33 @@ class StudioRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load managed studios") }
     }
 
+    // Name search for admin tooling (e.g. assigning a manager) - unlike searchStudios() below,
+    // this isn't limited to verified studios, since an admin may need to find any studio
+    // regardless of its verification/claim state.
+    fun searchStudiosByName(
+        query: String,
+        onSuccess: (List<Studio>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val normalizedQuery = query.trim()
+        db.collection(Constants.Collections.STUDIOS)
+            .limit(80)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val studios = snapshot.documents.mapNotNull { document ->
+                    document.toObject(Studio::class.java)?.copy(id = document.id)
+                }.filter { studio ->
+                    normalizedQuery.isBlank() ||
+                        studio.displayName.contains(normalizedQuery, ignoreCase = true) ||
+                        studio.city.contains(normalizedQuery, ignoreCase = true)
+                }.sortedBy { it.displayName }
+                onSuccess(studios)
+            }
+            .addOnFailureListener { error ->
+                onFailure(error.message ?: "Failed to search studios")
+            }
+    }
+
     // Searches verified studios by location and style.
     fun searchStudios(
         location: String,
@@ -178,12 +210,16 @@ class StudioRepository {
                     )
                 }
                 batch.commit()
-                    .addOnSuccessListener { onSuccess(!isFollowing) }
+                    .addOnSuccessListener {
+                        if (!isFollowing) createStudioFollowNotification(studioId, viewer)
+                        onSuccess(!isFollowing)
+                    }
                     .addOnFailureListener { error -> onFailure(error.message ?: "Failed to update follow state") }
             }
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load follow state") }
     }
 
+    // Checks if the signed-in user already follows this studio.
     fun isFollowingStudio(studioId: String, onSuccess: (Boolean) -> Unit, onFailure: (String) -> Unit = {}) {
         val uid = auth.currentUser?.uid
         if (uid == null || studioId.isBlank()) {
@@ -199,6 +235,7 @@ class StudioRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load follow state") }
     }
 
+    // Counts how many followers a studio has.
     fun loadStudioFollowers(studioId: String, onSuccess: (Int) -> Unit, onFailure: (String) -> Unit = {}) {
         if (studioId.isBlank()) {
             onSuccess(0)
@@ -232,6 +269,7 @@ class StudioRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to update studio profile") }
     }
 
+    // Updates a studio's teacher roster - both the plain uid list and the richer profile info shown on the studio page.
     fun updateStudioTeachers(
         studioId: String,
         teacherUids: List<String>,
@@ -248,6 +286,21 @@ class StudioRepository {
             .set(mapOf("teacherUids" to teacherUids, "teacherProfiles" to profiles, "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to update teachers") }
+    }
+
+    // Notifies a studio's inbox that someone new started following it.
+    private fun createStudioFollowNotification(studioId: String, viewer: User) {
+        val actorName = viewer.fullName()
+        notificationRepository.createNotification(
+            recipient = PartyRef.studio(studioId),
+            type = InAppNotification.Types.STUDIO_FOLLOW,
+            actorId = viewer.uid,
+            actorName = actorName,
+            actorProfileImageUrl = viewer.profileImageUrl,
+            title = "New follower",
+            message = "$actorName started following your studio.",
+            dedupeId = "studio_follow_${studioId}_${viewer.uid}"
+        )
     }
 
     private fun User.fullName(): String = "$firstName $lastName".trim().ifBlank { "Dancer" }

@@ -1,3 +1,5 @@
+// Sign-up form: collects name, email, and password, then sends the new user straight into
+// onboarding.
 package com.ana.theflow.ui.auth
 
 import android.os.Bundle

@@ -38,8 +38,15 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    match /studioApplications/{applicationId}/documents/{fileName} {
-      allow read, write: if signedIn() && isReasonableUpload();
+    // Same pattern: Storage can't check Firestore applicantUid, so the real gate is the
+    // Firestore professionalApplications update rule the resulting URL is written through.
+    match /professionalApplications/{applicationId}/documents/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn() && isReasonableUpload()
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/pdf'
+        );
     }
 
     match /{allPaths=**} {

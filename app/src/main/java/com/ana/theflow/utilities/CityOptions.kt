@@ -63,6 +63,23 @@ object CityOptions {
         return cityFor(value)?.id
     }
 
+    // Best-effort: does a free-text address mention one of our known cities anywhere in it?
+    // Used when approving a Google-sourced studio claim, where the only location text available
+    // is a full formatted address (e.g. "12 Dizengoff St, Tel Aviv, Israel") rather than a clean
+    // city field - cityFor() alone requires an exact match, which a full address never is.
+    fun guessCityFromAddress(address: String): CityOption? {
+        if (address.isBlank()) return null
+        val normalized = normalizeKey(address)
+        if (normalized.isBlank()) return null
+        return cityOptions.firstOrNull { city ->
+            val candidates = listOf(city.displayName) + city.aliases
+            candidates.any { candidate ->
+                val key = normalizeKey(candidate)
+                key.isNotBlank() && normalized.contains(key)
+            }
+        }
+    }
+
     fun cityFor(value: String): CityOption? {
         val normalized = normalizeKey(value)
         if (normalized.isBlank()) return null

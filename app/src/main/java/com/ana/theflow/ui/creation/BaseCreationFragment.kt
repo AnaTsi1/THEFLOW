@@ -1,3 +1,7 @@
+// Shared scaffold for every post-composer screen (plain post, event, collaboration): the header
+// bar, author row, media picker, and publish flow. Each subclass only supplies its own fields and
+// how to turn them into a CreatePayload - everything else about creating and publishing the post
+// lives here once.
 package com.ana.theflow.ui.creation
 
 import android.net.Uri
@@ -17,13 +21,17 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.StorageRepository
+import com.ana.theflow.data.repository.StudioRepository
 import com.ana.theflow.data.repository.UserRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.ui.common.UiText
 import com.bumptech.glide.Glide
 
@@ -33,6 +41,7 @@ abstract class BaseCreationFragment : Fragment() {
     protected val authRepository = AuthRepository()
     protected val userRepository = UserRepository()
     protected val storageRepository = StorageRepository()
+    protected val studioRepository = StudioRepository()
     protected val activityTrackingRepository = ActivityTrackingRepository()
 
     private var currentUser: User? = null
@@ -40,10 +49,14 @@ abstract class BaseCreationFragment : Fragment() {
     private var pendingMediaType: String = MEDIA_TYPE_NONE
     private lateinit var publishButton: Button
     private lateinit var authorName: TextView
+    private lateinit var authorSubtitle: TextView
     private lateinit var authorAvatar: ImageView
     private lateinit var mediaPreview: FrameLayout
     private lateinit var mediaPreviewImage: ImageView
     private lateinit var mediaPreviewLabel: TextView
+    private lateinit var fieldsContainer: LinearLayout
+    private lateinit var ineligibleContainer: LinearLayout
+    private lateinit var ineligibleLabel: TextView
 
     private val mediaPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         pendingMediaUri = uri
@@ -54,9 +67,22 @@ abstract class BaseCreationFragment : Fragment() {
     abstract val titleText: String
     abstract val publishButtonText: String
     abstract val publishSuccessMessage: String
+
+    // Adds this composer's own input fields into the card, below the author row.
     abstract fun buildFields(parent: LinearLayout)
+
+    // Reads the current field values into a CreatePayload, or returns null (and should show its
+    // own validation message) if something required is missing.
     abstract fun buildPayload(): CreatePayload?
 
+    // Subclasses that require a specific permission (e.g. collaboration posts requiring
+    // choreographer verification) override this. A non-null return blocks the composer entirely -
+    // fields are hidden, publishing is disabled - and shows the message with a path to request
+    // the missing permission. This is a UI convenience only; the real authorization boundary is
+    // enforced in Firestore rules regardless of what this returns.
+    protected open fun ineligibilityMessage(user: User): String? = null
+
+    // Builds the whole screen: header bar with the publish button, then the composer card.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return ScrollView(requireContext()).apply {
             setBackgroundColor(requireContext().getColor(R.color.flow_background))
@@ -136,6 +162,7 @@ abstract class BaseCreationFragment : Fragment() {
 
     protected fun mediaType(): String = pendingMediaType
 
+    // Back button, screen title, and the publish button.
     private fun header(): View {
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -178,6 +205,8 @@ abstract class BaseCreationFragment : Fragment() {
         }
     }
 
+    // The card holding the author row, the ineligibility notice (hidden unless needed), and the
+    // subclass's own fields plus the media preview.
     private fun composerCard(): View {
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
@@ -190,9 +219,52 @@ abstract class BaseCreationFragment : Fragment() {
                 topMargin = 8.dp()
             }
             addView(authorRow())
-            buildFields(this)
-            addView(mediaPreviewView())
+            addView(ineligibleView())
+            fieldsContainer = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                buildFields(this)
+                addView(mediaPreviewView())
+            }
+            addView(fieldsContainer)
         }
+    }
+
+    private fun ineligibleView(): View {
+        ineligibleContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, 10.dp(), 0, 4.dp())
+            ineligibleLabel = TextView(requireContext()).apply {
+                setTextColor(context.getColor(R.color.flow_text_secondary))
+                textSize = 14f
+                setLineSpacing(3.dp().toFloat(), 1f)
+            }
+            addView(ineligibleLabel)
+            addView(Button(requireContext()).apply {
+                text = "Request Verification"
+                isAllCaps = false
+                setTextColor(context.getColor(R.color.flow_surface))
+                setBackgroundResource(R.drawable.bg_flow_button_primary)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    46.dp()
+                ).apply { topMargin = 14.dp() }
+                setOnClickListener {
+                    (requireActivity() as MainActivity).openProfessionalVerification()
+                }
+            })
+        }
+        return ineligibleContainer
+    }
+
+    // Swaps the field area for the ineligibility message and disables publishing - used when
+    // ineligibilityMessage() says this user can't create this kind of post.
+    private fun showIneligibleState(message: String) {
+        ineligibleLabel.text = message
+        ineligibleContainer.visibility = View.VISIBLE
+        fieldsContainer.visibility = View.GONE
+        publishButton.isEnabled = false
+        publishButton.alpha = 0.5f
     }
 
     private fun authorRow(): View {
@@ -218,6 +290,7 @@ abstract class BaseCreationFragment : Fragment() {
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                 })
                 addView(TextView(context).apply {
+                    authorSubtitle = this
                     text = "Create for THE FLOW"
                     setTextColor(context.getColor(R.color.flow_text_muted))
                     textSize = 12f
@@ -227,6 +300,7 @@ abstract class BaseCreationFragment : Fragment() {
         }
     }
 
+    // Empty preview frame, filled in later by renderMediaPreview once something's picked.
     private fun mediaPreviewView(): View {
         mediaPreview = FrameLayout(requireContext()).apply {
             setBackgroundResource(R.drawable.bg_flow_media)
@@ -261,6 +335,8 @@ abstract class BaseCreationFragment : Fragment() {
         return mediaPreview
     }
 
+    // Shows the picked image directly, or just a "Video selected" label since there's no inline
+    // video thumbnail here.
     private fun renderMediaPreview() {
         val uri = pendingMediaUri
         mediaPreview.visibility = if (uri == null) View.GONE else View.VISIBLE
@@ -274,6 +350,7 @@ abstract class BaseCreationFragment : Fragment() {
         }
     }
 
+    // Loads the signed-in user, checks eligibility for this post type, and renders the author row.
     private fun loadCurrentUser() {
         val uid = authRepository.getCurrentUserUid()
         if (uid == null) {
@@ -284,20 +361,59 @@ abstract class BaseCreationFragment : Fragment() {
             uid = uid,
             onSuccess = { user ->
                 currentUser = user
-                val fullName = "${user.firstName} ${user.lastName}".trim().ifBlank { "Dancer" }
-                authorName.text = fullName
-                if (user.profileImageUrl.isNotBlank()) {
-                    Glide.with(this).load(user.profileImageUrl).circleCrop().into(authorAvatar)
+                val blockMessage = ineligibilityMessage(user)
+                if (blockMessage != null) {
+                    showIneligibleState(blockMessage)
+                    return@getUserByUid
                 }
+                renderActiveAccountRow(user)
             },
             onFailure = { error -> Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not load your profile."), Toast.LENGTH_SHORT).show() }
         )
     }
 
+    // Shows who this post will be attributed to - the signed-in person, or the studio they
+    // currently have active - so it's never a surprise which account published it.
+    private fun renderActiveAccountRow(user: User) {
+        val fullName = "${user.firstName} ${user.lastName}".trim().ifBlank { "Dancer" }
+        when (val account = ActiveAccountHolder.current()) {
+            is ActiveAccount.Personal -> {
+                authorName.text = fullName
+                authorSubtitle.text = "Create for THE FLOW"
+                if (user.profileImageUrl.isNotBlank()) {
+                    Glide.with(this).load(user.profileImageUrl).circleCrop().into(authorAvatar)
+                }
+            }
+            is ActiveAccount.StudioAccount -> {
+                studioRepository.loadStudio(
+                    studioId = account.studioId,
+                    onSuccess = { studio ->
+                        authorName.text = studio.displayName.ifBlank { fullName }
+                        authorSubtitle.text = "Posting as: ${studio.displayName.ifBlank { "your studio" }}"
+                        if (studio.profileImageUrl.isNotBlank()) {
+                            Glide.with(this).load(studio.profileImageUrl).circleCrop().into(authorAvatar)
+                        }
+                    },
+                    onFailure = {
+                        authorName.text = fullName
+                        authorSubtitle.text = "Create for THE FLOW"
+                    }
+                )
+            }
+        }
+    }
+
+    // Validates eligibility, builds the payload, and creates the post - then uploads any picked
+    // media once the post document exists (media is attached to a real postId, not created blind).
     private fun publish() {
         val user = currentUser
         if (user == null) {
             Toast.makeText(requireContext(), "User is not loaded yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val blockMessage = ineligibilityMessage(user)
+        if (blockMessage != null) {
+            showIneligibleState(blockMessage)
             return
         }
         val payload = buildPayload() ?: return
@@ -330,6 +446,8 @@ abstract class BaseCreationFragment : Fragment() {
         )
     }
 
+    // Uploads the picked media to the just-created post, or skips straight to finishing if
+    // nothing was picked.
     private fun uploadMediaIfNeeded(postId: String, user: User, text: String) {
         val uri = pendingMediaUri
         if (uri == null) {
@@ -349,18 +467,22 @@ abstract class BaseCreationFragment : Fragment() {
         )
     }
 
+    // Logs the creation as an activity signal, tells the user it worked, and closes the composer.
     private fun finishCreate(postId: String, user: User, text: String) {
         activityTrackingRepository.trackCreatePost(postId, user.role, text)
         Toast.makeText(requireContext(), publishSuccessMessage, Toast.LENGTH_SHORT).show()
         parentFragmentManager.popBackStack()
     }
 
+    // Figures out photo vs. video from the picked file's MIME type.
     private fun resolveMediaType(uri: Uri?): String {
         if (uri == null) return MEDIA_TYPE_NONE
         val type = requireContext().contentResolver.getType(uri).orEmpty()
         return if (type.startsWith("video/")) MEDIA_TYPE_VIDEO else MEDIA_TYPE_PHOTO
     }
 
+    // The fields a subclass fills in from its own inputs to describe the post it wants created;
+    // fields not relevant to that post type are just left at their defaults.
     data class CreatePayload(
         val text: String,
         val postType: String = POST_TYPE_REGULAR,

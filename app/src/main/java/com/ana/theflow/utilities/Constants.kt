@@ -10,7 +10,6 @@ object Constants {
         const val STUDIO_REQUESTS = "studioRequests"
         const val PERMISSION_GRANTS = "permissionGrants"
         const val PROFESSIONAL_APPLICATIONS = "professionalApplications"
-        const val STUDIO_APPLICATIONS = "studioApplications"
         const val USER_ACTIVITY_EVENTS = "userActivityEvents"
         const val EXTERNAL_STUDIOS = "externalStudios"
         const val CONVERSATIONS = "conversations"

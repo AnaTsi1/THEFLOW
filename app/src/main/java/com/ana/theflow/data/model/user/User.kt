@@ -1,7 +1,9 @@
+// Firestore model for a person's account: identity, role/permissions, dance profile, and social links.
 package com.ana.theflow.data.model.user
 
 import com.ana.theflow.utilities.Constants
 
+// A person's account - who they are, what they're allowed to do, and their public profile.
 data class User(
     val uid: String = "",
     val firstName: String = "",

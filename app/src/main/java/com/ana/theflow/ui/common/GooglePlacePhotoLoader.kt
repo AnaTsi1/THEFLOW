@@ -1,8 +1,10 @@
-// Loads Google Place photos for Discover cards without persisting external images.
+// Loads Google Place photos for Discover cards without persisting external images. Fetches the
+// first available photo per place and caches it for the current process.
 package com.ana.theflow.ui.common
 
 import android.content.Context
 import android.net.Uri
+import android.text.Html
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
@@ -13,7 +15,6 @@ import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FetchResolvedPhotoUriRequest
 
-// Fetches the first available Google Places photo and caches it for the current process.
 object GooglePlacePhotoLoader {
     private const val CARD_PHOTO_WIDTH = 640
     private const val CARD_PHOTO_HEIGHT = 360
@@ -23,11 +24,14 @@ object GooglePlacePhotoLoader {
     private val pendingPlaceIds = mutableSetOf<String>()
 
     // Loads a card-sized photo for a Google Place. Failures leave the existing placeholder visible.
+    // onPhotoLoaded fires only once a real photo is actually about to be shown, so callers can hide
+    // their own type-label placeholder exactly then - not before, and not on failure.
     fun load(
         context: Context,
         placeId: String,
         imageView: ImageView,
-        attributionView: TextView
+        attributionView: TextView,
+        onPhotoLoaded: () -> Unit = {}
     ) {
         if (placeId.isBlank() || BuildConfig.PLACES_API_KEY.isBlank() || !Places.isInitialized()) return
 
@@ -35,6 +39,7 @@ object GooglePlacePhotoLoader {
         uriCache[placeId]?.let { uri ->
             Glide.with(context).load(uri).centerCrop().into(imageView)
             renderAttribution(placeId, attributionView)
+            onPhotoLoaded()
             return
         }
         if (pendingPlaceIds.contains(placeId)) return
@@ -67,6 +72,7 @@ object GooglePlacePhotoLoader {
                         if (imageView.tag == placeId) {
                             Glide.with(context).load(photoUri).centerCrop().into(imageView)
                             renderAttribution(placeId, attributionView)
+                            onPhotoLoaded()
                         }
                     }
                     .addOnFailureListener {
@@ -78,9 +84,11 @@ object GooglePlacePhotoLoader {
             }
     }
 
+    // Google's attribution string is HTML (e.g. an <a href> crediting the photo's contributor) -
+    // it must be parsed, not assigned as a raw string, or the markup shows up as literal text.
     private fun renderAttribution(placeId: String, attributionView: TextView) {
         val attribution = attributionCache[placeId].orEmpty()
-        attributionView.text = attribution
+        attributionView.text = if (attribution.isBlank()) "" else Html.fromHtml(attribution, Html.FROM_HTML_MODE_LEGACY)
         attributionView.visibility = if (attribution.isBlank()) View.GONE else View.VISIBLE
     }
 }

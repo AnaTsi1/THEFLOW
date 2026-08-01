@@ -15,9 +15,10 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.messaging.Conversation
-import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.MessagingRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.databinding.FragmentConversationsBinding
 import com.ana.theflow.ui.common.ResponsiveLayout
 import com.ana.theflow.ui.common.UiText
@@ -32,7 +33,6 @@ class ConversationsFragment : Fragment() {
     private var _binding: FragmentConversationsBinding? = null
     private val binding get() = _binding!!
     private val messagingRepository = MessagingRepository()
-    private val authRepository = AuthRepository()
     private val viewModel: ConversationsViewModel by activityViewModels()
     private var conversationsListener: ListenerRegistration? = null
 
@@ -58,6 +58,7 @@ class ConversationsFragment : Fragment() {
         binding.conversationsLBLMessage.visibility = if (viewModel.conversations.isEmpty()) View.GONE else binding.conversationsLBLMessage.visibility
         conversationsListener?.remove()
         conversationsListener = messagingRepository.listenToConversations(
+            account = ActiveAccountHolder.current(),
             onUpdate = { conversations ->
                 if (_binding == null) return@listenToConversations
                 viewModel.conversations = conversations
@@ -80,20 +81,19 @@ class ConversationsFragment : Fragment() {
     }
 
     private fun renderConversations(conversations: List<Conversation>) {
-        val currentUid = authRepository.getCurrentUserUid().orEmpty()
+        val account = ActiveAccountHolder.current()
         binding.conversationsLAYList.removeAllViews()
         binding.conversationsLBLMessage.visibility = if (conversations.isEmpty()) View.VISIBLE else View.GONE
         binding.conversationsLBLMessage.text = "No conversations yet. Start a new message when you're ready."
         conversations.forEach { conversation ->
-            binding.conversationsLAYList.addView(conversationRow(conversation, currentUid))
+            binding.conversationsLAYList.addView(conversationRow(conversation, account))
         }
     }
 
-    private fun conversationRow(conversation: Conversation, currentUid: String): View {
+    private fun conversationRow(conversation: Conversation, account: ActiveAccount): View {
         val context = requireContext()
-        val otherUid = conversation.participantIds.firstOrNull { it != currentUid }.orEmpty()
-        val other = conversation.participantInfo[otherUid]
-        val unreadCount = conversation.unreadCounts[currentUid] ?: 0L
+        val other = ConversationDisplay.counterparty(conversation, account)
+        val unreadCount = conversation.unreadCounts[ConversationDisplay.myPartyKey(account)] ?: 0L
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

@@ -1,3 +1,6 @@
+// Process-wide source of truth for which account (personal or a managed studio) is currently
+// active. Backed by SharedPreferences so the choice survives process death, keyed by Firebase
+// uid so switching signed-in users never leaks a studio selection across accounts.
 package com.ana.theflow.data.session
 
 import android.content.Context
@@ -6,9 +9,6 @@ import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.user.User
 import com.google.firebase.auth.FirebaseAuth
 
-// Process-wide source of truth for which account (personal or a managed studio) is currently
-// active. Backed by SharedPreferences so the choice survives process death, keyed by Firebase
-// uid so switching signed-in users never leaks a studio selection across accounts.
 object ActiveAccountHolder {
     private const val PREFS_NAME = "flow_active_account"
     private const val KEY_PREFIX = "active_"
@@ -16,6 +16,8 @@ object ActiveAccountHolder {
     private var prefs: SharedPreferences? = null
     private val listeners = mutableListOf<(ActiveAccount) -> Unit>()
 
+    // Opens the SharedPreferences file once for the app's lifetime - safe to call more than once,
+    // later calls are no-ops.
     fun init(context: Context) {
         if (prefs != null) return
         prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -35,6 +37,8 @@ object ActiveAccountHolder {
 
     fun currentStudioId(): String = (current() as? ActiveAccount.StudioAccount)?.studioId.orEmpty()
 
+    // Persists the chosen account for this uid and tells every screen listening (e.g. the account
+    // switcher, the composer) to refresh right away.
     fun set(account: ActiveAccount) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid.orEmpty()
         if (uid.isBlank()) return

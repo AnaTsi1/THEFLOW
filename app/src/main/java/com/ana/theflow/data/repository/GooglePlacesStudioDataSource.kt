@@ -1,3 +1,5 @@
+// This is where we go out to Google Places and look up real dance studios, so search and
+// discover aren't limited to studios that already have a profile on THE FLOW.
 package com.ana.theflow.data.repository
 
 import android.content.Context
@@ -26,10 +28,14 @@ class GooglePlacesStudioDataSource(
         null
     }
 
+    // Runs the actual Places search. We build a few different query variants (see
+    // buildExternalStudioQueries) and fire them all at once, then merge whatever comes back and
+    // filter out anything that isn't really a dance studio.
     override fun searchStudios(
         query: String,
         city: String,
         location: Location?,
+        radiusMeters: Double?,
         onSuccess: (List<DiscoveryItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -55,10 +61,12 @@ class GooglePlacesStudioDataSource(
                 .setRegionCode("IL")
                 .apply {
                     if (location != null) {
+                        val radius = (radiusMeters ?: DEFAULT_SEARCH_RADIUS_METERS)
+                            .coerceIn(MIN_SEARCH_RADIUS_METERS, MAX_SEARCH_RADIUS_METERS)
                         setLocationBias(
                             CircularBounds.newInstance(
                                 LatLng(location.latitude, location.longitude),
-                                SEARCH_RADIUS_METERS
+                                radius
                             )
                         )
                     }
@@ -94,6 +102,10 @@ class GooglePlacesStudioDataSource(
         }
     }
 
+    // Which fields we ask Google for on every search. Worth remembering that rating, phone, and
+    // website all push this call into Google's pricier billing tier - they're included on purpose
+    // because we actually show all three (rating badges everywhere, phone/website on the detail
+    // screen), not because we grabbed everything without thinking about it.
     private fun placeFields(): List<Place.Field> {
         return listOf(
             Place.Field.ID,
@@ -110,6 +122,9 @@ class GooglePlacesStudioDataSource(
         )
     }
 
+    // Turns a raw Google Place result into our own DiscoveryItem shape, so the rest of the app can
+    // treat a Google studio the same way it treats one of our own. Skips anything missing an id or
+    // name since we can't really show a studio without those.
     private fun Place.toDiscoveryItem(userLocation: Location?): DiscoveryItem? {
         val placeId = id.orEmpty()
         val name = displayName.orEmpty()
@@ -157,6 +172,8 @@ class GooglePlacesStudioDataSource(
         )
     }
 
+    // Google doesn't give us a clean "city" field, just a formatted address, so we just check if
+    // any of our known city names (or their aliases) show up in it.
     private fun inferCityFromAddress(address: String): String {
         if (address.isBlank()) return ""
         return CityOptions.cityOptions.firstOrNull { city ->
@@ -165,6 +182,8 @@ class GooglePlacesStudioDataSource(
         }?.displayName.orEmpty()
     }
 
+    // Turns whatever error code Places threw at us into something readable to show the user,
+    // instead of a raw API error message.
     private fun userMessageFor(error: Exception): String {
         val status = (error as? ApiException)?.statusCode
         return when (status) {
@@ -176,6 +195,9 @@ class GooglePlacesStudioDataSource(
     }
 
     companion object {
-        private const val SEARCH_RADIUS_METERS = 30000.0
+        private const val DEFAULT_SEARCH_RADIUS_METERS = 30000.0
+        // Places API (New) rejects a location bias radius outside this range.
+        private const val MIN_SEARCH_RADIUS_METERS = 500.0
+        private const val MAX_SEARCH_RADIUS_METERS = 50000.0
     }
 }

@@ -1,7 +1,10 @@
+// Firestore models for the Jobs feature: a job listing posted by a studio business account, and
+// an application a dancer submits against one.
 package com.ana.theflow.data.model.jobs
 
 import com.google.firebase.Timestamp
 
+// A job/audition/role listing, posted by a studio business account.
 data class DanceJob(
     val jobId: String = "",
     val title: String = "",
@@ -42,9 +45,11 @@ data class DanceJob(
     }
 }
 
+// One dancer's application to a specific job.
 data class JobApplication(
     val applicationId: String = "",
     val jobId: String = "",
+    val studioId: String = "",
     val applicantId: String = "",
     val applicantName: String = "",
     val introduction: String = "",

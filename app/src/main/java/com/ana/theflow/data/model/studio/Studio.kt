@@ -38,4 +38,18 @@ data class Studio(
     val createdByUid: String = "",
     val createdAt: Timestamp? = null,
     val updatedAt: Timestamp? = null
-)
+) {
+    // socialLinks and teacherProfiles are loosely-typed Firestore maps (not their own model
+    // classes) - these are the one shared set of keys every reader/writer of those maps uses,
+    // so the shape stays consistent between the profile view and the edit screen.
+    companion object {
+        const val SOCIAL_INSTAGRAM = "instagram"
+        const val SOCIAL_TIKTOK = "tiktok"
+        const val SOCIAL_YOUTUBE = "youtube"
+
+        const val TEACHER_KEY_UID = "uid"
+        const val TEACHER_KEY_NAME = "name"
+        const val TEACHER_KEY_HEADLINE = "headline"
+        const val TEACHER_KEY_PHOTO = "profileImageUrl"
+    }
+}

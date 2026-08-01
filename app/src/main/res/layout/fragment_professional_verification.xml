@@ -1,97 +1,324 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/flow_background"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingBottom="24dp">
-
-        <Button
-            android:id="@+id/verification_BTN_back"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:background="@drawable/bg_button_secondary"
-            android:minWidth="0dp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="Back"
-            android:textAllCaps="false"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="Professional Verification"
-            android:textColor="@color/text_primary"
-            android:textSize="30sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Request a professional badge or studio page review."
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
+        android:paddingBottom="32dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp">
+
+            <ImageButton
+                android:id="@+id/verification_BTN_back"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_flow_icon_button"
+                android:contentDescription="@string/action_back"
+                android:src="@drawable/ic_arrow_back_24"
+                app:tint="@color/flow_ink" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:text="Get Verified"
+                android:textColor="@color/flow_ink"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="18dp"
+            android:lineSpacingExtra="2dp"
+            android:text="Apply for a professional badge on your profile. An admin reviews every request, usually within a few days."
+            android:textColor="@color/flow_text_secondary"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="22dp"
+            android:layout_marginEnd="18dp"
+            android:text="WHAT ARE YOU APPLYING FOR?"
+            android:textColor="@color/flow_text_muted"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="18dp"
             android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/verification_CARD_teacher"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_flow_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <ImageView
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_chip"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_profile_24"
+                    app:tint="@color/flow_brand" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Verified Teacher"
+                        android:textColor="@color/flow_ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="You regularly teach classes or workshops"
+                        android:textColor="@color/flow_text_secondary"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/verification_IMG_teacher_check"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_check_circle_24"
+                    android:visibility="invisible"
+                    app:tint="@color/flow_brand" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/verification_CARD_choreographer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_flow_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <ImageView
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_chip"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_work_24"
+                    app:tint="@color/flow_brand" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Choreographer"
+                        android:textColor="@color/flow_ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="You create original routines or productions"
+                        android:textColor="@color/flow_text_secondary"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/verification_IMG_choreographer_check"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_check_circle_24"
+                    android:visibility="invisible"
+                    app:tint="@color/flow_brand" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="22dp"
+            android:layout_marginEnd="18dp"
+            android:text="YOUR DETAILS"
+            android:textColor="@color/flow_text_muted"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="18dp"
+            android:background="@drawable/bg_flow_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Requested display name"
+                android:textColor="@color/flow_ink"
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/verification_EDT_displayName"
                 android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:background="@drawable/bg_input"
-                android:hint="Requested display name"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted" />
-
-            <Button
-                android:id="@+id/verification_BTN_teacher"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="14dp"
-                android:background="@drawable/bg_button_primary"
-                android:text="Request Verified Teacher"
-                android:textColor="@color/text_primary"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/verification_BTN_choreographer"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_button_secondary"
-                android:text="Request Choreographer"
-                android:textColor="@color/text_primary" />
-
-            <Button
-                android:id="@+id/verification_BTN_studio"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_button_secondary"
-                android:text="Create or claim a studio"
-                android:textColor="@color/text_primary" />
+                android:layout_height="50dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_flow_input"
+                android:hint="How your badge name should appear"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted"
+                android:textSize="14sp" />
 
             <TextView
-                android:id="@+id/verification_LBL_message"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:textColor="@color/text_secondary"
+                android:layout_marginTop="18dp"
+                android:text="Training and experience"
+                android:textColor="@color/flow_ink"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Studios you've trained or taught at, notable credits, certifications, or links to your work."
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/verification_EDT_experience"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_flow_input"
+                android:gravity="top"
+                android:hint="e.g. 5 years teaching hip-hop at Studio X, choreographed for..."
+                android:inputType="textMultiLine"
+                android:minLines="4"
+                android:paddingStart="14dp"
+                android:paddingTop="12dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="12dp"
+                android:textColor="@color/flow_ink"
+                android:textColorHint="@color/flow_text_muted"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Supporting document (optional)"
+                android:textColor="@color/flow_ink"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="A teaching certificate, credential, or other proof an admin can review."
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/verification_BTN_document"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_flow_button_secondary"
+                android:text="Add certificate or document"
+                android:textAllCaps="false"
+                android:textColor="@color/flow_brand"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/verification_LBL_document"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/verification_LBL_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="14dp"
+            android:layout_marginEnd="18dp"
+            android:textColor="@color/flow_error"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/verification_BTN_submit"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginStart="18dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginEnd="18dp"
+            android:background="@drawable/bg_flow_button_primary"
+            android:text="Submit Application"
+            android:textAllCaps="false"
+            android:textColor="@color/flow_surface"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </ScrollView>

@@ -1,3 +1,6 @@
+// Every permission mutation in the app funnels through here: studio create/claim approval,
+// professional verification, and direct grant/revoke of teacher/choreographer/manager status.
+// Nothing outside this class (and Firestore rules) may write role/verified*/managedStudioIds.
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.permission.PermissionGrant
@@ -8,6 +11,7 @@ import com.ana.theflow.data.model.studio.Studio
 import com.ana.theflow.data.model.studio.StudioClaim
 import com.ana.theflow.data.model.studio.StudioRequest
 import com.ana.theflow.data.model.user.User
+import com.ana.theflow.utilities.CityOptions
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -16,9 +20,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 
-// Every permission mutation in the app funnels through here: studio create/claim approval,
-// professional verification, and direct grant/revoke of teacher/choreographer/manager status.
-// Nothing outside this class (and Firestore rules) may write role/verified*/managedStudioIds.
 class AdminRepository {
 
     private val auth = FirebaseAuth.getInstance()
@@ -37,7 +38,7 @@ class AdminRepository {
                 val legacyRequests = mutableListOf<StudioRequest>()
                 var applications: List<ProfessionalApplication> = emptyList()
                 var reports: List<ContentReport> = emptyList()
-                val warnings = mutableListOf<String>()
+                val failedSections = mutableSetOf<ReviewSection>()
                 var pendingLoads = 4
 
                 fun finishOne() {
@@ -48,7 +49,7 @@ class AdminRepository {
                             studioRequests = (newRequests + legacyRequests).sortedByDescending { it.createdAt?.seconds ?: 0L },
                             professionalApplications = applications,
                             contentReports = reports,
-                            warnings = warnings
+                            failedSections = failedSections
                         )
                     )
                 }
@@ -63,8 +64,8 @@ class AdminRepository {
                         })
                         finishOne()
                     }
-                    .addOnFailureListener { error ->
-                        warnings.add("Studio requests could not load: ${error.message ?: "permission problem"}")
+                    .addOnFailureListener {
+                        failedSections.add(ReviewSection.STUDIO_REQUESTS)
                         finishOne()
                     }
 
@@ -79,8 +80,8 @@ class AdminRepository {
                         )
                         finishOne()
                     }
-                    .addOnFailureListener { error ->
-                        warnings.add("Legacy studio claims could not load: ${error.message ?: "permission problem"}")
+                    .addOnFailureListener {
+                        failedSections.add(ReviewSection.STUDIO_REQUESTS)
                         finishOne()
                     }
 
@@ -94,8 +95,8 @@ class AdminRepository {
                         }.filterNot { isLegacyStudioApplication(it.applicationType) }
                         finishOne()
                     }
-                    .addOnFailureListener { error ->
-                        warnings.add("Professional applications could not load: ${error.message ?: "permission problem"}")
+                    .addOnFailureListener {
+                        failedSections.add(ReviewSection.PROFESSIONAL_APPLICATIONS)
                         finishOne()
                     }
 
@@ -108,8 +109,8 @@ class AdminRepository {
                         }.sortedByDescending { it.createdAt?.seconds ?: 0L }
                         finishOne()
                     }
-                    .addOnFailureListener { error ->
-                        warnings.add("Content reports could not load: ${error.message ?: "permission problem"}")
+                    .addOnFailureListener {
+                        failedSections.add(ReviewSection.CONTENT_REPORTS)
                         finishOne()
                     }
             },
@@ -123,6 +124,28 @@ class AdminRepository {
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
+        updateContentReportStatus(report, "resolved", onSuccess, onFailure)
+    }
+
+    // Marks a content report as reviewed with no action taken against the content - the report
+    // is closed out (removed from the pending "open" queue) instead of silently doing nothing and
+    // resurfacing on every future review pass.
+    fun dismissContentReport(
+        report: ContentReport,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        updateContentReportStatus(report, "dismissed", onSuccess, onFailure)
+    }
+
+    // Shared write path behind resolveContentReport/dismissContentReport - just flips the status
+    // field and stamps who reviewed it and when.
+    private fun updateContentReportStatus(
+        report: ContentReport,
+        status: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
         ensureAdmin(
             onSuccess = {
                 if (report.reportId.isBlank()) {
@@ -133,14 +156,14 @@ class AdminRepository {
                     .document(report.reportId)
                     .update(
                         mapOf(
-                            "status" to "resolved",
+                            "status" to status,
                             "resolvedAt" to FieldValue.serverTimestamp(),
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
                     )
                     .addOnSuccessListener { onSuccess() }
                     .addOnFailureListener { error ->
-                        onFailure(error.message ?: "Failed to resolve report")
+                        onFailure(error.message ?: "Failed to update report")
                     }
             },
             onFailure = onFailure
@@ -340,7 +363,7 @@ class AdminRepository {
                             .addOnSuccessListener {
                                 notificationRepository.createNotification(
                                     recipientUid = targetUid,
-                                    type = InAppNotification.Types.PROFESSIONAL_APPROVED,
+                                    type = InAppNotification.Types.PERMISSION_GRANTED,
                                     actorId = adminUid,
                                     title = "Studio access granted",
                                     message = "You were added as a manager of a studio.",
@@ -390,7 +413,7 @@ class AdminRepository {
                                     .addOnSuccessListener {
                                         notificationRepository.createNotification(
                                             recipientUid = targetUid,
-                                            type = InAppNotification.Types.PROFESSIONAL_REJECTED,
+                                            type = InAppNotification.Types.PERMISSION_REVOKED,
                                             actorId = adminUid,
                                             title = "Studio access removed",
                                             message = "You are no longer a manager of a studio.",
@@ -507,6 +530,8 @@ class AdminRepository {
         )
     }
 
+    // Turns an approved "create new studio" request into a real studio document, owned and
+    // managed by whoever requested it.
     private fun approveCreateRequest(
         request: StudioRequest,
         adminUid: String,
@@ -517,6 +542,11 @@ class AdminRepository {
         val studioRef = db.collection(Constants.Collections.STUDIOS).document()
         val userRef = db.collection(Constants.Collections.USERS).document(request.requesterUid)
         val grantRef = db.collection(Constants.Collections.PERMISSION_GRANTS).document()
+        // A studio created this way (as opposed to claiming a Google-sourced listing) has no
+        // geocoded address, so it would otherwise never have coordinates and stay permanently
+        // invisible on the map. The city it was created in already has known coordinates, so use
+        // those as an approximate pin rather than leaving it with none at all.
+        val cityCoordinates = CityOptions.cityFor(request.draftCity)
 
         db.runBatch { batch ->
             batch.update(
@@ -537,6 +567,8 @@ class AdminRepository {
                     "city" to request.draftCity,
                     "address" to request.draftAddress,
                     "location" to request.draftCity,
+                    "latitude" to cityCoordinates?.latitude,
+                    "longitude" to cityCoordinates?.longitude,
                     "bio" to request.draftBio,
                     "danceStyles" to request.draftDanceStyles,
                     "websiteUrl" to request.draftWebsiteUrl,
@@ -565,12 +597,15 @@ class AdminRepository {
             batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, request.requesterUid, request.requesterName, PermissionGrant.Actions.APPROVE_STUDIO_REQUEST, studioRef.id, ""))
         }
             .addOnSuccessListener {
-                notifyStudioRequestDecision(request, adminUid, approved = true)
+                notifyStudioRequestDecision(request, adminUid, approved = true, resultStudioId = studioRef.id)
                 onSuccess()
             }
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to approve request") }
     }
 
+    // Turns an approved claim request into ownership of a studio. Covers two cases: claiming a
+    // studio that already exists in our own STUDIOS collection, and claiming a place that was
+    // only ever a Google Places result until now, which needs a brand new studio document.
     private fun approveClaimRequest(
         request: StudioRequest,
         adminUid: String,
@@ -603,14 +638,24 @@ class AdminRepository {
                 )
             )
             if (isExternalClaim) {
+                // The request only ever carried the studio's name/address as bare text before -
+                // an approved external claim would create a studio with no coordinates and no
+                // city, silently undermining every distance-based ranking feature from then on.
+                // latitude/longitude/coverImageUrl now come straight from the Google Places
+                // result the requester was actually looking at; city is a best-effort guess from
+                // the address text since Google's formatted address has no separate city field.
+                val guessedCity = CityOptions.guessCityFromAddress(request.address)
                 batch.set(
                     studioRef,
                     mapOf(
                         "id" to studioRef.id,
                         "displayName" to request.studioName,
                         "address" to request.address,
-                        "city" to "",
-                        "location" to request.address,
+                        "city" to guessedCity?.displayName.orEmpty(),
+                        "location" to (guessedCity?.displayName ?: request.address),
+                        "latitude" to (request.latitude ?: guessedCity?.latitude),
+                        "longitude" to (request.longitude ?: guessedCity?.longitude),
+                        "coverImageUrl" to request.coverImageUrl,
                         "ownerUid" to request.requesterUid,
                         "managerUids" to listOf(request.requesterUid),
                         "googlePlaceId" to request.googlePlaceId,
@@ -659,12 +704,15 @@ class AdminRepository {
             batch.set(grantRef, permissionGrantMap(grantRef.id, adminUid, request.requesterUid, request.requesterName, PermissionGrant.Actions.APPROVE_STUDIO_REQUEST, studioRef.id, ""))
         }
             .addOnSuccessListener {
-                notifyStudioRequestDecision(request, adminUid, approved = true)
+                notifyStudioRequestDecision(request, adminUid, approved = true, resultStudioId = studioRef.id)
                 onSuccess()
             }
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to approve studio claim") }
     }
 
+    // Shared implementation behind the grant/revoke pairs above - flips the given boolean field
+    // on the user, keeps their professionalBadges list in sync with it, and logs a permission
+    // grant record so there's an audit trail of who granted what and when.
     private fun setBooleanPermission(
         targetUid: String,
         field: String,
@@ -698,7 +746,7 @@ class AdminRepository {
                             .addOnSuccessListener {
                                 notificationRepository.createNotification(
                                     recipientUid = targetUid,
-                                    type = if (value) InAppNotification.Types.PROFESSIONAL_APPROVED else InAppNotification.Types.PROFESSIONAL_REJECTED,
+                                    type = if (value) InAppNotification.Types.PERMISSION_GRANTED else InAppNotification.Types.PERMISSION_REVOKED,
                                     actorId = adminUid,
                                     title = if (value) "Permission granted" else "Permission updated",
                                     message = if (value) "You are now a $badge." else "Your $badge status was removed.",
@@ -714,6 +762,9 @@ class AdminRepository {
         )
     }
 
+    // Studio requests can live in one of two collections depending on whether they came from the
+    // newer flow or the old legacy claims flow, so this just points at whichever one actually owns
+    // this request.
     private fun requestDocRef(request: StudioRequest) =
         if (request.sourceCollection == StudioRequest.SOURCE_LEGACY_STUDIO_CLAIMS) {
             db.collection(Constants.Collections.STUDIO_CLAIMS).document(request.requestId)
@@ -721,19 +772,23 @@ class AdminRepository {
             db.collection(Constants.Collections.STUDIO_REQUESTS).document(request.requestId)
         }
 
-    private fun notifyStudioRequestDecision(request: StudioRequest, adminUid: String, approved: Boolean) {
+    // Tells the requester whether their studio create/claim request was approved or rejected.
+    private fun notifyStudioRequestDecision(request: StudioRequest, adminUid: String, approved: Boolean, resultStudioId: String = "") {
         val title = if (request.type == StudioRequest.TYPE_CREATE) "Studio request" else "Studio claim"
         val statusText = if (approved) "approved" else "rejected"
         notificationRepository.createNotification(
             recipientUid = request.requesterUid,
-            type = if (approved) InAppNotification.Types.PROFESSIONAL_APPROVED else InAppNotification.Types.PROFESSIONAL_REJECTED,
+            type = if (approved) InAppNotification.Types.STUDIO_REQUEST_APPROVED else InAppNotification.Types.STUDIO_REQUEST_REJECTED,
             actorId = adminUid,
+            studioId = resultStudioId,
             title = "$title $statusText",
             message = "Your request for ${request.draftDisplayName.ifBlank { request.studioName }.ifBlank { "a studio" }} was $statusText.",
             dedupeId = "studio_request_${request.requestId}_$statusText"
         )
     }
 
+    // Builds the record we write to PERMISSION_GRANTS every time an admin changes someone's
+    // access, so there's a permanent log of who did what to whom.
     private fun permissionGrantMap(
         grantId: String,
         adminUid: String,
@@ -755,12 +810,16 @@ class AdminRepository {
         )
     }
 
+    // Pulls a display name out of a user document for notification/grant text, without blowing up
+    // if first or last name happens to be missing.
     private fun fullNameFrom(document: DocumentSnapshot): String {
         return listOf(document.getString("firstName").orEmpty(), document.getString("lastName").orEmpty())
             .filter { it.isNotBlank() }
             .joinToString(" ")
     }
 
+    // Gatekeeper for every function in this class - checks that whoever is signed in actually
+    // has the admin role before letting any permission-changing code run.
     private fun ensureAdmin(
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
@@ -787,6 +846,9 @@ class AdminRepository {
             }
     }
 
+    // Maps an application type to the fields it grants on approval. Returns null for the studio
+    // application type, since studio access only ever comes through the studio request flow -
+    // that keeps this function from accidentally handing out studio permissions from the wrong path.
     private fun professionalApprovalUpdates(applicationType: String): Map<String, Any>? {
         return when {
             applicationType.equals(Constants.ProfessionalApplicationType.VERIFIED_TEACHER.firestoreValue, ignoreCase = true) -> {
@@ -805,11 +867,16 @@ class AdminRepository {
         }
     }
 
+    // Old professional applications could be filed with a "studio" type before studio requests
+    // got their own dedicated flow. Those are filtered out of the pending applications list since
+    // studio access is now handled entirely through studio requests instead.
     private fun isLegacyStudioApplication(applicationType: String): Boolean {
         @Suppress("DEPRECATION")
         return applicationType.equals(Constants.ProfessionalApplicationType.STUDIO.firestoreValue, ignoreCase = true)
     }
 
+    // Tells the applicant whether their Verified Teacher / Choreographer application was
+    // approved or rejected.
     private fun notifyProfessionalApplication(
         application: ProfessionalApplication,
         adminUid: String,
@@ -832,6 +899,7 @@ class AdminRepository {
         )
     }
 
+    // Turns the raw application type value into the human-readable label used in notification text.
     private fun applicationTypeLabel(type: String): String {
         return when {
             type.equals(Constants.ProfessionalApplicationType.VERIFIED_TEACHER.firestoreValue, ignoreCase = true) -> "Verified Teacher"
@@ -840,15 +908,27 @@ class AdminRepository {
         }
     }
 
+    // Role is stored inconsistently across older and newer accounts (plain enum name vs. the
+    // Firestore-facing value), so this checks both forms rather than assuming one.
     private fun String.isAdminRole(): Boolean {
         return equals(Constants.UserRole.ADMIN.name, ignoreCase = true) ||
             equals(Constants.UserRole.ADMIN.firestoreValue, ignoreCase = true)
     }
 
+    // Everything the admin review screen needs in one bundle, plus which sections (if any)
+    // failed to load.
     data class AdminReviewData(
         val studioRequests: List<StudioRequest> = emptyList(),
         val professionalApplications: List<ProfessionalApplication> = emptyList(),
         val contentReports: List<ContentReport> = emptyList(),
-        val warnings: List<String> = emptyList()
+        // Which sections failed to load, so the UI can show a friendly per-section "couldn't
+        // load, tap to retry" instead of a raw Firestore error string.
+        val failedSections: Set<ReviewSection> = emptySet()
     )
+
+    enum class ReviewSection {
+        STUDIO_REQUESTS,
+        PROFESSIONAL_APPLICATIONS,
+        CONTENT_REPORTS
+    }
 }

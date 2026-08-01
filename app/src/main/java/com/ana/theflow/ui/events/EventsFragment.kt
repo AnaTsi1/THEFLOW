@@ -143,11 +143,7 @@ class EventsFragment : Fragment() {
                     emptyText = getString(R.string.events_upcoming_empty)
                 )
             }
-            EventsTab.MY_EVENTS -> {
-                addSection("Created Events", createdEvents.distinctBy { it.postId }, "You have not created any events yet.")
-                addSection(getString(R.string.events_registered), registeredEvents.distinctBy { it.postId }, "You haven’t registered for any events yet.")
-                if (createdEvents.isEmpty() && registeredEvents.isEmpty()) addDiscoverEventsAction()
-            }
+            EventsTab.MY_EVENTS -> renderMyEvents()
         }
     }
 
@@ -195,20 +191,43 @@ class EventsFragment : Fragment() {
             content.addView(SettingsUi.message(context, emptyText))
             return
         }
-        posts.forEach { post ->
-            PostCardRenderer.addPostCard(
-                parent = content,
-                post = post,
-                isEventRegistered = registeredEvents.any { it.postId == post.postId },
-                currentUserId = authRepository.getCurrentUserUid().orEmpty(),
-                onOpen = { (requireActivity() as MainActivity).openPost(it.postId) },
-                onEventRegister = { toggleEventRegistration(it) },
-                onRepost = { shareEventToFeed(it) },
-                onAuthorOpen = { (requireActivity() as MainActivity).openUserProfile(it) },
-                onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) },
-                cardStyle = PostCardRenderer.CardStyle.FLOW_LIGHT
-            )
+        posts.forEach { post -> addEventCard(post, badge = null) }
+    }
+
+    // "Created Events" and "Registered events" used to be two rigid list sections. A merged,
+    // date-ordered feed with a small "Hosting"/"Registered" badge on each card reads more like a
+    // single modern feed instead of two disconnected lists.
+    private fun renderMyEvents() {
+        val created = createdEvents.distinctBy { it.postId }
+        val registered = registeredEvents.distinctBy { it.postId }
+        val createdIds = created.map { it.postId }.toSet()
+        val merged = (created + registered.filterNot { it.postId in createdIds })
+            .sortedWith(compareBy({ it.activityDate }, { it.activityTime }))
+
+        if (merged.isEmpty()) {
+            content.addView(SettingsUi.message(requireContext(), "You have not created or registered for any events yet."))
+            addDiscoverEventsAction()
+            return
         }
+        merged.forEach { post ->
+            addEventCard(post, badge = if (post.postId in createdIds) "Hosting" else "Registered")
+        }
+    }
+
+    private fun addEventCard(post: Post, badge: String?) {
+        PostCardRenderer.addPostCard(
+            parent = content,
+            post = post,
+            isEventRegistered = registeredEvents.any { it.postId == post.postId },
+            currentUserId = authRepository.getCurrentUserUid().orEmpty(),
+            onOpen = { (requireActivity() as MainActivity).openPost(it.postId) },
+            onEventRegister = { toggleEventRegistration(it) },
+            onRepost = { shareEventToFeed(it) },
+            onAuthorOpen = { (requireActivity() as MainActivity).openUserProfile(it) },
+            onAuthorEntityOpen = { ref -> (requireActivity() as MainActivity).openAuthorEntity(ref) },
+            cardStyle = PostCardRenderer.CardStyle.FLOW_LIGHT,
+            eventBadge = badge
+        )
     }
 
     private fun addDiscoverEventsAction() {

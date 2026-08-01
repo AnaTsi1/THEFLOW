@@ -1,3 +1,5 @@
+// Small layout helpers for making the same screens look right on both phones and wider
+// tablet/foldable screens, without needing separate layout files per screen size.
 package com.ana.theflow.ui.common
 
 import android.view.Gravity
@@ -8,6 +10,8 @@ import android.widget.LinearLayout
 import com.ana.theflow.R
 
 object ResponsiveLayout {
+    // Caps a view's width at flow_content_max_width and centers it, so content stays a
+    // comfortable reading width on a wide screen instead of stretching edge-to-edge.
     fun constrainToReadableWidth(vararg views: View) {
         views.forEach { view ->
             view.post {
@@ -27,6 +31,8 @@ object ResponsiveLayout {
         }
     }
 
+    // Bumps a view up to the minimum accessible touch-target size (flow_touch_size) if it's
+    // currently smaller, without shrinking anything that's already big enough.
     fun ensureTouchTarget(vararg views: View) {
         val minSize = views.firstOrNull()?.resources?.getDimensionPixelSize(R.dimen.flow_touch_size) ?: return
         views.forEach { view ->

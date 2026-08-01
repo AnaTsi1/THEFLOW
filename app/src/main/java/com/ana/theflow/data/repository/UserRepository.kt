@@ -129,6 +129,9 @@ class UserRepository {
             }
     }
 
+    // Grabs a bounded batch of users and filters/sorts them client-side by name, headline, dance
+    // styles, or location - dancersOnly narrows results to plain dancers (no verified badge),
+    // which is what the studio teacher-picker and similar "add a real dancer" flows need.
     fun searchUsers(
         query: String,
         dancersOnly: Boolean,
@@ -216,6 +219,8 @@ class UserRepository {
             }
     }
 
+    // The user doc and the recommendationProfile subdoc both only need `uid` - neither depends on
+    // the other's data - so they're read in parallel instead of one after another.
     fun loadRecommendationProfile(
         onSuccess: (RecommendationProfile) -> Unit,
         onFailure: (String) -> Unit
@@ -225,23 +230,64 @@ class UserRepository {
             onFailure("User is not logged in")
             return
         }
+        loadRecommendationProfileFor(
+            uid = uid,
+            onSuccess = { _, profile -> onSuccess(profile) },
+            onFailure = onFailure
+        )
+    }
 
+    // Same as loadRecommendationProfile, but for an arbitrary uid rather than only the signed-in
+    // user - used by the admin recommendation-insights screen to inspect any user's real learned
+    // profile without needing to sign in as them. Also hands back the User doc, since the admin
+    // preview needs both (danceStyles/danceLevel/location for the fallback chain, plus display).
+    fun loadRecommendationProfileFor(
+        uid: String,
+        onSuccess: (User, RecommendationProfile) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
         val userRef = db.collection(Constants.Collections.USERS).document(uid)
+        var user: User? = null
+        var profileDocument: DocumentSnapshot? = null
+        var failed = false
+        var pending = 2
+
+        fun finishIfReady() {
+            if (failed) return
+            pending -= 1
+            if (pending > 0) return
+            val loadedUser = user
+            if (loadedUser == null) {
+                onFailure("User not found")
+                return
+            }
+            onSuccess(loadedUser, profileDocument!!.toRecommendationProfile(uid, loadedUser))
+        }
+
         userRef.get()
             .addOnSuccessListener { userDocument ->
-                val user = userDocument.toObject(User::class.java)?.copy(uid = userDocument.id)
-                userRef.collection("recommendationProfile")
-                    .document("main")
-                    .get()
-                    .addOnSuccessListener { profileDocument ->
-                        onSuccess(profileDocument.toRecommendationProfile(uid, user))
-                    }
-                    .addOnFailureListener { error ->
-                        onFailure(error.message ?: "Failed to load recommendation profile")
-                    }
+                user = userDocument.toObject(User::class.java)?.copy(uid = userDocument.id)
+                finishIfReady()
             }
             .addOnFailureListener { error ->
-                onFailure(error.message ?: "Failed to load user profile")
+                if (!failed) {
+                    failed = true
+                    onFailure(error.message ?: "Failed to load user profile")
+                }
+            }
+
+        userRef.collection("recommendationProfile")
+            .document("main")
+            .get()
+            .addOnSuccessListener { document ->
+                profileDocument = document
+                finishIfReady()
+            }
+            .addOnFailureListener { error ->
+                if (!failed) {
+                    failed = true
+                    onFailure(error.message ?: "Failed to load recommendation profile")
+                }
             }
     }
 
@@ -284,7 +330,9 @@ class UserRepository {
             }
     }
 
-    // Updates profile fields for a user.
+    // Generic partial update for arbitrary user fields - just passes the given map straight to
+    // Firestore. Used by screens that only need to touch one or two fields (like a profile photo
+    // change) rather than the whole profile-edit form below.
     fun updateUserFields(
         uid: String,
         updates: Map<String, Any>,
@@ -309,7 +357,7 @@ class UserRepository {
             }
     }
 
-    // Updates profile fields for a user.
+    // Saves the full set of fields from the profile-edit screen in one write.
     fun updateUserProfile(
         uid: String,
         firstName: String,
@@ -703,6 +751,9 @@ class UserRepository {
             .orEmpty()
     }
 
+    // Turns the raw recommendationProfile document into the RecommendationProfile object the
+    // ranking strategies actually work with, falling back to the user's own onboarding
+    // styles/level/location wherever the learned profile doesn't have a value yet.
     private fun DocumentSnapshot.toRecommendationProfile(uid: String, user: User?): RecommendationProfile {
         val preferredStyles = stringList(get("preferredStyles"))
         val preferredLevel = getString("preferredLevel").orEmpty()
@@ -734,6 +785,18 @@ class UserRepository {
         )
     }
 
+    // scoreMetadata.$key.score and the raw field it shadows (e.g. styleScores.hip_hop) are two
+    // parallel accumulators the write path increments by the same amount on every event - the
+    // only real difference is that the metadata copy gets time-decay applied at read time. So
+    // metadata's decayed value is meant to REPLACE the raw aggregate for a given key, not add to
+    // it (they represent the same underlying total, one decayed, one not).
+    //
+    // scoreMetadata keys are stored verbatim, never normalized at read time, so some accounts have
+    // a case-variant metadata key sitting alongside the correctly normalized one (e.g.
+    // "styleScores_Hip_Hop" next to "styleScores_hip_hop") - two entries for what's really the same
+    // signal, just split by casing. So this normalizes the key first and SUMS same-normalized-key
+    // entries together rather than picking one, since both are genuine partial totals of the same
+    // underlying score and neither should be thrown away.
     private fun DocumentSnapshot.effectiveScoreMap(
         field: String,
         normalizeKey: (String) -> String,
@@ -741,12 +804,15 @@ class UserRepository {
     ): Map<String, Double> {
         val scores = normalizedScoreMap(field, normalizeKey).toMutableMap()
         val prefix = "${field}_"
+        val decayedByNormalizedKey = mutableMapOf<String, Double>()
         metadata.forEach { (metadataKey, metadataValue) ->
-            if (metadataKey.startsWith(prefix)) {
-                val key = metadataKey.removePrefix(prefix)
-                scores[key] = RecommendationScoreMath.decayed(metadataValue.score, metadataValue.lastUpdatedMillis)
-            }
+            if (!metadataKey.startsWith(prefix)) return@forEach
+            val key = normalizeKey(metadataKey.removePrefix(prefix))
+            if (key.isBlank() || key == "unknown") return@forEach
+            val decayed = RecommendationScoreMath.decayed(metadataValue.score, metadataValue.lastUpdatedMillis)
+            decayedByNormalizedKey[key] = (decayedByNormalizedKey[key] ?: 0.0) + decayed
         }
+        decayedByNormalizedKey.forEach { (key, decayed) -> scores[key] = decayed }
         return scores
     }
 
@@ -755,13 +821,23 @@ class UserRepository {
         normalizeKey: (String) -> String
     ): Map<String, Double> {
         val value = get(field) as? Map<*, *> ?: return emptyMap()
-        return value.mapNotNull { (key, score) ->
-            val rawKey = key as? String ?: return@mapNotNull null
-            val number = score as? Number ?: (score as? Map<*, *>)?.get("score") as? Number ?: return@mapNotNull null
-            normalizeKey(rawKey).takeIf { it.isNotBlank() && it != "unknown" }?.let { it to number.toDouble() }
-        }.toMap()
+        // Some accounts have case-variant duplicates for the same underlying key sitting in the
+        // raw Firestore map (e.g. both "Hip_Hop" and "hip_hop" as separate fields). A plain
+        // toMap() would keep only the last value it sees for a given normalized key and silently
+        // throw away the other one, corrupting the learned score the ranking engine reads. Summing
+        // every raw key that normalizes to the same value is what keeps both real contributions.
+        val merged = LinkedHashMap<String, Double>()
+        value.forEach { (key, score) ->
+            val rawKey = key as? String ?: return@forEach
+            val number = score as? Number ?: (score as? Map<*, *>)?.get("score") as? Number ?: return@forEach
+            val normalized = normalizeKey(rawKey).takeIf { it.isNotBlank() && it != "unknown" } ?: return@forEach
+            merged[normalized] = (merged[normalized] ?: 0.0) + number.toDouble()
+        }
+        return merged
     }
 
+    // Reads the raw scoreMetadata map off the document into typed RecommendationScoreMetadata
+    // objects, one per signal key.
     private fun DocumentSnapshot.scoreMetadataMap(): Map<String, RecommendationScoreMetadata> {
         val value = get("scoreMetadata") as? Map<*, *> ?: return emptyMap()
         return value.mapNotNull { (key, rawMetadata) ->

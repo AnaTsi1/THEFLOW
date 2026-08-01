@@ -1,3 +1,5 @@
+// Entry point before a user is signed in - decides whether to show login/register or, if
+// there's already a signed-in session, skip straight to the main app.
 package com.ana.theflow.ui.auth
 
 import android.content.Intent
@@ -16,7 +18,9 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
     private val authViewModel: AuthViewModel by viewModels()
 
-    // Sets up the activity when it is created.
+    // Skips straight to routing if there's already a signed-in user; otherwise shows login.
+    // Does nothing on a config-change recreation (savedInstanceState != null) since the fragment
+    // manager already restores whichever screen was showing.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

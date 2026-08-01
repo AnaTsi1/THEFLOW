@@ -1,6 +1,11 @@
+// Turns a raw Firestore/network error message into something a user can actually read, instead
+// of showing internal error codes or collection paths straight from an exception.
 package com.ana.theflow.ui.common
 
 object UiText {
+    // Maps known error signatures (permission, missing index, offline) to a plain sentence, and
+    // falls back to a generic message for anything that still looks like it leaked internal
+    // details (a Firestore/Firebase term, or a path with a slash in it).
     fun friendlyError(raw: String?, fallback: String = "Something went wrong. Please try again."): String {
         val message = raw.orEmpty()
         if (message.isBlank()) return fallback

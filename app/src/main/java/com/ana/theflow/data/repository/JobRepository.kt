@@ -15,13 +15,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 
-// Jobs are always published by a business (studio) account - never a personal profile.
+// Everything to do with job listings and applications. Jobs are always published by a studio
+// business account, never a personal profile - browsing and applying is open to everyone though.
 class JobRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     private val notificationRepository = NotificationRepository()
 
+    // Loads open job listings, with optional filters for search text, city, style, job type, and work type.
     fun loadActiveJobs(
         query: String = "",
         city: String = "",
@@ -51,6 +53,7 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load jobs") }
     }
 
+    // Loads one job by id.
     fun loadJob(jobId: String, onSuccess: (DanceJob) -> Unit, onFailure: (String) -> Unit) {
         if (jobId.isBlank()) {
             onFailure("Missing job id")
@@ -79,7 +82,8 @@ class JobRepository {
             .addOnFailureListener { onSuccess(false) }
     }
 
-    // Creates a job posting on behalf of a studio the signed-in user currently manages.
+    // Creates a job posting on behalf of a studio the signed-in user currently manages. Double-
+    // checks they actually manage that studio (or are an admin) before writing anything.
     fun createJob(
         studioId: String,
         title: String,
@@ -158,6 +162,7 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load job permissions") }
     }
 
+    // Saves or unsaves a job for the signed-in user, depending on whether it's already saved.
     fun toggleSaveJob(job: DanceJob, onSuccess: (Boolean) -> Unit, onFailure: (String) -> Unit) {
         val uid = auth.currentUser?.uid
         if (uid == null) {
@@ -185,6 +190,7 @@ class JobRepository {
         }.addOnFailureListener { error -> onFailure(error.message ?: "Failed to load saved job state") }
     }
 
+    // Checks if the signed-in user has this job saved.
     fun isJobSaved(jobId: String, onSuccess: (Boolean) -> Unit, onFailure: (String) -> Unit = {}) {
         val uid = auth.currentUser?.uid
         if (uid == null || jobId.isBlank()) {
@@ -198,6 +204,7 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load saved state") }
     }
 
+    // Loads the signed-in user's saved jobs, newest first.
     fun loadSavedJobs(onSuccess: (List<DanceJob>) -> Unit, onFailure: (String) -> Unit) {
         val uid = auth.currentUser?.uid
         if (uid == null) {
@@ -218,6 +225,8 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load saved jobs") }
     }
 
+    // Submits a job application and notifies whoever posted the job. The application id is
+    // job+applicant combined, so someone can't accidentally apply to the same job twice.
     fun submitApplication(
         job: DanceJob,
         applicant: User,
@@ -249,6 +258,7 @@ class JobRepository {
         val data = mapOf(
             "applicationId" to applicationId,
             "jobId" to job.jobId,
+            "studioId" to job.studioId,
             "applicantId" to uid,
             "applicantName" to "${applicant.firstName} ${applicant.lastName}".trim().ifBlank { "Dancer" },
             "introduction" to cleanIntro,
@@ -277,6 +287,7 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to submit application") }
     }
 
+    // Loads every application the signed-in user has submitted.
     fun loadMyApplications(onSuccess: (List<JobApplication>) -> Unit, onFailure: (String) -> Unit) {
         val uid = auth.currentUser?.uid
         if (uid == null) {
@@ -327,6 +338,22 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load applicants") }
     }
 
+    // Loads one application by id.
+    fun loadApplication(applicationId: String, onSuccess: (JobApplication) -> Unit, onFailure: (String) -> Unit) {
+        if (applicationId.isBlank()) {
+            onFailure("Missing application id")
+            return
+        }
+        db.collection(Constants.Collections.JOB_APPLICATIONS)
+            .document(applicationId)
+            .get()
+            .addOnSuccessListener { document ->
+                document.toApplication()?.let(onSuccess) ?: onFailure("Application was not found")
+            }
+            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load application") }
+    }
+
+    // Withdraws an application - just flips its status rather than deleting it.
     fun withdrawApplication(applicationId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         if (applicationId.isBlank()) {
             onFailure("Missing application id")
@@ -344,6 +371,7 @@ class JobRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to withdraw application") }
     }
 
+    // Loads a specific set of jobs by id, keeping them in the same order the ids were given in.
     private fun loadJobsByIds(ids: List<String>, onSuccess: (List<DanceJob>) -> Unit, onFailure: (String) -> Unit) {
         val clean = ids.distinct().filter { it.isNotBlank() }
         if (clean.isEmpty()) {
@@ -385,6 +413,7 @@ class JobRepository {
         return toObject(JobApplication::class.java)?.copy(applicationId = id)
     }
 
+    // Checks a job against a search query across title, employer, location, description, and requirements.
     private fun DanceJob.matches(query: String): Boolean {
         return listOf(title, employerName, city, location, description, paymentText, experienceLevel)
             .any { it.contains(query, ignoreCase = true) } ||
@@ -392,6 +421,7 @@ class JobRepository {
             danceStyles.any { it.contains(query, ignoreCase = true) }
     }
 
+    // Just the fields we need for the "saved jobs" list - no point storing the whole job twice.
     private fun DanceJob.savedSummary(): Map<String, Any> {
         return mapOf(
             "jobId" to jobId,

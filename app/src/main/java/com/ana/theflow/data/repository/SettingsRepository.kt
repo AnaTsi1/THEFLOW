@@ -1,3 +1,4 @@
+// Loads and saves a user's notification and messaging preferences from Settings.
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.settings.MessageSettings
@@ -13,6 +14,7 @@ class SettingsRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
+    // Loads a user's notification and message settings. If they've never saved any before, everything defaults to "on."
     fun loadSettings(
         uid: String = auth.currentUser?.uid.orEmpty(),
         onSuccess: (NotificationSettings, MessageSettings) -> Unit,
@@ -37,6 +39,7 @@ class SettingsRepository {
             }
     }
 
+    // Saves notification settings without touching anything else on the user document.
     fun saveNotificationSettings(
         settings: NotificationSettings,
         onSuccess: () -> Unit,
@@ -54,6 +57,7 @@ class SettingsRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to save notification settings") }
     }
 
+    // Saves message settings without touching anything else on the user document.
     fun saveMessageSettings(
         settings: MessageSettings,
         onSuccess: () -> Unit,
@@ -72,6 +76,7 @@ class SettingsRepository {
     }
 
     companion object {
+        // Reads notification settings off a user document - anything missing just defaults to "on."
         fun DocumentSnapshot.notificationSettings(): NotificationSettings {
             val map = get("notificationSettings") as? Map<*, *> ?: emptyMap<Any, Any>()
             return NotificationSettings(
@@ -86,6 +91,7 @@ class SettingsRepository {
             )
         }
 
+        // Same idea for message settings.
         fun DocumentSnapshot.messageSettings(): MessageSettings {
             val map = get("messageSettings") as? Map<*, *> ?: emptyMap<Any, Any>()
             return MessageSettings(
@@ -97,6 +103,7 @@ class SettingsRepository {
             )
         }
 
+        // Turns NotificationSettings into a plain map for a Firestore merge write.
         fun notificationSettingsMap(settings: NotificationSettings): Map<String, Any> {
             return mapOf(
                 "allNotificationsEnabled" to settings.allNotificationsEnabled,
@@ -110,6 +117,7 @@ class SettingsRepository {
             )
         }
 
+        // Same thing for MessageSettings.
         fun messageSettingsMap(settings: MessageSettings): Map<String, Any> {
             return mapOf(
                 "messageNotificationsEnabled" to settings.messageNotificationsEnabled,

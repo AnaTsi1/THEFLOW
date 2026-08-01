@@ -1,3 +1,7 @@
+// Full-screen dialog for creating a dance-activity post (class/workshop/social/etc). Built as its
+// own DialogFragment rather than reusing BaseCreationFragment, since events need date/time
+// pickers, a progressive-disclosure layout (schedule/location/dance/registration sections that
+// start collapsed), and inline field validation that the simpler composers don't.
 package com.ana.theflow.ui.creation
 
 import android.app.DatePickerDialog
@@ -36,12 +40,15 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.data.repository.ActivityTrackingRepository
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.PostRepository
 import com.ana.theflow.data.repository.StorageRepository
+import com.ana.theflow.data.repository.StudioRepository
 import com.ana.theflow.data.repository.UserRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.ui.common.UiText
 import com.ana.theflow.utilities.CityOptions
 import com.bumptech.glide.Glide
@@ -56,6 +63,7 @@ class EventCreationFragment : DialogFragment() {
     private val authRepository = AuthRepository()
     private val userRepository = UserRepository()
     private val storageRepository = StorageRepository()
+    private val studioRepository = StudioRepository()
     private val activityTrackingRepository = ActivityTrackingRepository()
 
     private var currentUser: User? = null
@@ -110,6 +118,8 @@ class EventCreationFragment : DialogFragment() {
         updateCreateState()
     }
 
+    // Plain, titleless dialog that confirms before closing on back-press rather than dismissing
+    // silently and losing whatever the organizer typed.
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         return Dialog(requireContext()).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -126,6 +136,9 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Restores which progressive sections were expanded and which schedule type was chosen
+    // across a config change, and wires the same "confirm before closing" behavior to the
+    // system back gesture.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         savedInstanceState?.let {
@@ -145,6 +158,8 @@ class EventCreationFragment : DialogFragment() {
         })
     }
 
+    // Builds the whole dialog: top bar, a scrolling form (cover photo, organizer row, all the
+    // fields), and a bottom bar with the error text and Create button.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         root = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
@@ -168,6 +183,7 @@ class EventCreationFragment : DialogFragment() {
         return root
     }
 
+    // Restores any saved field text, then renders everything that depends on that restored state.
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         restoreText(savedInstanceState)
         renderSchedule()
@@ -177,6 +193,8 @@ class EventCreationFragment : DialogFragment() {
         updateCreateState()
     }
 
+    // Sizes the dialog window itself - wider and shorter on a tablet, near-fullscreen with a dim
+    // backdrop on a phone.
     override fun onStart() {
         super.onStart()
         dialog?.window?.apply {
@@ -192,6 +210,8 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Saves every field's current text plus the section-expanded/schedule-type state across a
+    // config change, so rotating the screen never loses what the organizer already typed.
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(KEY_HAS_END, hasEndDateTime)
@@ -219,6 +239,7 @@ class EventCreationFragment : DialogFragment() {
         outState.putString(KEY_EXTERNAL_REGISTRATION_LINK, externalRegistrationLinkField.text.toString())
     }
 
+    // Close button and screen title.
     private fun topBar(): View {
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -243,6 +264,8 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // The cover-photo preview with its Add/Remove buttons - renderCover() fills in the actual
+    // image or fallback text once a photo is picked or removed.
     private fun coverArea(): View {
         return FrameLayout(requireContext()).apply {
             setBackgroundResource(R.drawable.bg_flow_media)
@@ -291,6 +314,8 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Shows who's organizing the event - filled in later by renderActiveAccountRow once the
+    // signed-in user (and active studio account, if any) has loaded.
     private fun organizerRow(): View {
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -324,6 +349,9 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Builds the whole form: name, schedule type picker, date/time, and four progressively
+    // disclosed sections (schedule details, location, dance details, registration) plus an
+    // additional-details section, all starting collapsed so the form doesn't feel overwhelming.
     private fun buildFields(parent: LinearLayout) {
         nameField = field("Event name")
         parent.addView(nameField)
@@ -451,6 +479,7 @@ class EventCreationFragment : DialogFragment() {
             .forEach { it.addTextChangedListener(validationWatcher) }
     }
 
+    // The validation error text and the Create Event button, pinned to the bottom of the dialog.
     private fun bottomBar(): View {
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
@@ -478,6 +507,8 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Loads the signed-in user so the organizer row and create flow both have someone to attribute
+    // the event to.
     private fun loadCurrentUser() {
         val uid = authRepository.getCurrentUserUid() ?: return
         userRepository.getUserByUid(
@@ -485,15 +516,42 @@ class EventCreationFragment : DialogFragment() {
             onSuccess = { user ->
                 if (!isAdded) return@getUserByUid
                 currentUser = user
-                organizerName.text = "${user.firstName} ${user.lastName}".trim().ifBlank { "Dancer" }
-                organizerRole.text = "${user.role.cleanDisplayValue().ifBlank { "Dancer" }} - created by this account"
-                if (user.profileImageUrl.isNotBlank()) Glide.with(this).load(user.profileImageUrl).circleCrop().into(organizerAvatar)
+                renderActiveAccountRow(user)
                 updateCreateState()
             },
             onFailure = { error -> Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not load your profile."), Toast.LENGTH_SHORT).show() }
         )
     }
 
+    // Shows who this event will be attributed to - the signed-in person, or the studio they
+    // currently have active - so it's never a surprise which account published it.
+    private fun renderActiveAccountRow(user: User) {
+        val fullName = "${user.firstName} ${user.lastName}".trim().ifBlank { "Dancer" }
+        when (val account = ActiveAccountHolder.current()) {
+            is ActiveAccount.Personal -> {
+                organizerName.text = fullName
+                organizerRole.text = "${user.role.cleanDisplayValue().ifBlank { "Dancer" }} - created by this account"
+                if (user.profileImageUrl.isNotBlank()) Glide.with(this).load(user.profileImageUrl).circleCrop().into(organizerAvatar)
+            }
+            is ActiveAccount.StudioAccount -> {
+                studioRepository.loadStudio(
+                    studioId = account.studioId,
+                    onSuccess = { studio ->
+                        if (!isAdded) return@loadStudio
+                        organizerName.text = studio.displayName.ifBlank { fullName }
+                        organizerRole.text = "Posting as: ${studio.displayName.ifBlank { "your studio" }}"
+                        if (studio.profileImageUrl.isNotBlank()) Glide.with(this).load(studio.profileImageUrl).circleCrop().into(organizerAvatar)
+                    },
+                    onFailure = {
+                        organizerName.text = fullName
+                        organizerRole.text = "${user.role.cleanDisplayValue().ifBlank { "Dancer" }} - created by this account"
+                    }
+                )
+            }
+        }
+    }
+
+    // Validates the form, then creates the event post and uploads its cover photo (if any).
     private fun createEvent() {
         val user = currentUser ?: return showError("Your profile is still loading.")
         val validation = validationMessage()
@@ -523,6 +581,8 @@ class EventCreationFragment : DialogFragment() {
         )
     }
 
+    // Uploads the picked cover to the just-created event post, or finishes right away if there's
+    // no cover to upload.
     private fun uploadCoverIfNeeded(postId: String, user: User) {
         val uri = pendingCoverUri
         if (uri == null) {
@@ -542,6 +602,7 @@ class EventCreationFragment : DialogFragment() {
         )
     }
 
+    // Logs the creation, tells the organizer it worked, closes the dialog, and opens the new event.
     private fun finishCreate(postId: String, user: User) {
         activityTrackingRepository.trackCreatePost(postId, user.role, nameField.textString())
         Toast.makeText(requireContext(), "Event created", Toast.LENGTH_SHORT).show()
@@ -549,6 +610,8 @@ class EventCreationFragment : DialogFragment() {
         (activity as? MainActivity)?.openPost(postId)
     }
 
+    // Resets the button back to its normal state and shows a friendly version of whatever error
+    // came back.
     private fun failCreate(raw: String, fallback: String) {
         isCreating = false
         createButton.text = "Create Event"
@@ -556,6 +619,9 @@ class EventCreationFragment : DialogFragment() {
         showError(UiText.friendlyError(raw, fallback))
     }
 
+    // Folds all the secondary fields (schedule type, end time, event type, style, registration
+    // info) into the one activityDescription field the post schema actually has, since most of
+    // these details don't have their own dedicated columns yet.
     private fun buildDescription(): String {
         return listOf(
             descriptionField.textString(),
@@ -569,6 +635,7 @@ class EventCreationFragment : DialogFragment() {
         ).filterNotNull().filter { it.isNotBlank() }.joinToString("\n")
     }
 
+    // Returns the first thing wrong with the form, or null if it's ready to submit.
     private fun validationMessage(): String? {
         if (currentUser == null) return "Your profile is still loading."
         if (nameField.textString().isBlank()) return "Add an event name."
@@ -580,6 +647,8 @@ class EventCreationFragment : DialogFragment() {
         return null
     }
 
+    // Enables/disables the Create button and shows/hides the inline error based on current
+    // validation state.
     private fun updateCreateState() {
         if (!::createButton.isInitialized) return
         val validation = validationMessage()
@@ -594,6 +663,8 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Rebuilds the schedule-type buttons (highlighting whichever is selected) and shows/hides the
+    // end-date-time and recurrence rows to match.
     private fun renderSchedule() {
         if (!::scheduleOptions.isInitialized) return
         endDateTimeContainer.visibility = if (hasEndDateTime || scheduleType == ScheduleType.DATE_RANGE) View.VISIBLE else View.GONE
@@ -620,6 +691,7 @@ class EventCreationFragment : DialogFragment() {
         renderProgressiveSections()
     }
 
+    // Shows or hides each collapsible section based on its own show* flag.
     private fun renderProgressiveSections() {
         if (!::scheduleDetailsContainer.isInitialized) return
         scheduleDetailsContainer.visibility = if (showScheduleDetails) View.VISIBLE else View.GONE
@@ -629,6 +701,7 @@ class EventCreationFragment : DialogFragment() {
         additionalContainer.visibility = if (showAdditionalDetails) View.VISIBLE else View.GONE
     }
 
+    // Shows the picked cover photo, or the "Event cover" fallback text if none is set.
     private fun renderCover() {
         val uri = pendingCoverUri
         coverFallback.visibility = if (uri == null) View.VISIBLE else View.GONE
@@ -640,6 +713,8 @@ class EventCreationFragment : DialogFragment() {
         }
     }
 
+    // Closes right away if nothing's been typed, otherwise confirms first so a stray back-press
+    // doesn't silently throw away a half-filled-in event.
     private fun requestClose() {
         if (!hasUnsavedChanges()) {
             dismissAllowingStateLoss()
@@ -653,6 +728,7 @@ class EventCreationFragment : DialogFragment() {
             .show()
     }
 
+    // True if the organizer has typed or picked anything at all.
     private fun hasUnsavedChanges(): Boolean {
         if (pendingCoverUri != null) return true
         return listOf(nameField, startDateField, startTimeField, endDateField, endTimeField, venueField, addressField, cityField, styleField, levelField, eventTypeField, capacityField, registrationMethodField, externalRegistrationLinkField, descriptionField, contactField)

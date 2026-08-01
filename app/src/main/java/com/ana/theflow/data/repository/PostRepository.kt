@@ -10,11 +10,13 @@ import com.ana.theflow.data.model.post.PostCommentReply
 import com.ana.theflow.data.model.post.PostMediaItem
 import com.ana.theflow.data.model.post.authorRef
 import com.ana.theflow.data.model.post.isStudioAuthored
+import com.ana.theflow.data.model.messaging.toPartyRef
 import com.ana.theflow.data.model.notification.InAppNotification
 import com.ana.theflow.data.model.studio.Studio
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.data.recommendation.ForYouRankingStrategy
 import com.ana.theflow.data.recommendation.RecommendationContext
+import com.ana.theflow.data.recommendation.RecommendationProfile
 import com.ana.theflow.data.recommendation.RecommendationSurface
 import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.utilities.Constants
@@ -29,7 +31,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Centralizes Firestore access for posts so feed screens do not write post data directly.
 class PostRepository {
 
     private val auth = FirebaseAuth.getInstance()
@@ -179,6 +180,9 @@ class PostRepository {
             }
     }
 
+    // Creates a repost pointing back at the original - refuses to repost your own post (unless
+    // it's a dance activity, which people do share to their own feed) and refuses a duplicate
+    // repost of the same source post by the same person.
     fun createRepost(
         originalPost: Post,
         author: User,
@@ -283,51 +287,88 @@ class PostRepository {
         loadForYouFeed(onSuccess = onSuccess, onFailure = onFailure)
     }
 
-    // Loads public posts for the personalized feed.
+    // Loads public posts for the personalized feed. The post query, hidden-post ids, blocked-
+    // author ids, and the recommendation profile are four independent reads - none of them
+    // depends on any other's result - so they're all fired off at once here instead of one after
+    // another. Doing 4 round trips in parallel instead of in sequence is what keeps Home feeling
+    // fast to open.
     fun loadForYouFeed(
         onSuccess: (List<Post>) -> Unit,
         onFailure: (String) -> Unit
     ) {
+        val uid = auth.currentUser?.uid
+        var posts: List<Post>? = null
+        var hiddenIds: Set<String> = emptySet()
+        var blockedIds: Set<String> = emptySet()
+        var profile: RecommendationProfile? = null
+        var failed = false
+        var pending = 4
+
+        fun finishIfReady() {
+            if (failed) return
+            pending -= 1
+            if (pending > 0) return
+            val candidates = posts.orEmpty()
+                .filterNot { hiddenIds.contains(it.postId) || blockedIds.contains(it.authorId) }
+                .take(50)
+            val loadedProfile = profile
+            if (uid == null || loadedProfile == null) {
+                // This is a real, silent personalization cliff, not a graceful degradation: the
+                // fallback below has zero data plugged into it (PostRecommendationProfile() is
+                // always constructed empty at every call site in this file) - not even explicit
+                // style/level, only popularity+freshness. It fires on ANY recommendation-profile
+                // load failure, which is a real possibility (two Firestore reads, either can
+                // fail), not just the rare signed-out case. Logging when it's the latter, since a
+                // signed-in user unexpectedly losing all personalization for a request is worth
+                // being able to find in logs - unlike uid == null, which is an expected, unlogged
+                // state (no user to personalize for).
+                if (uid != null) {
+                    Log.w(TAG_PERMISSION, "loadForYouFeed falling back to non-personalized ranking uid=$uid (recommendation profile failed to load)")
+                }
+                onSuccess(RecommendationEngine.rankPosts(candidates, PostRecommendationProfile()))
+            } else {
+                onSuccess(applyForYouRanking(candidates, uid, loadedProfile))
+            }
+        }
+
         db.collection(Constants.Collections.POSTS)
             .whereEqualTo("visibility", "public")
             .limit(100)
             .get()
             .addOnSuccessListener { snapshot ->
-                val posts = snapshot.documents.mapNotNull { document ->
+                posts = snapshot.documents.mapNotNull { document ->
                     document.toObject(Post::class.java)?.copy(postId = document.id)
                 }.filter { post ->
                     post.postType != POST_TYPE_DANCE_ACTIVITY || !post.isPastActivityDate()
                 }.sortedByDescending { it.createdAt?.seconds ?: 0L }
-                loadHiddenPostIds(
-                    onSuccess = { hiddenIds ->
-                        loadBlockedAuthorIds(
-                            onSuccess = { blockedIds ->
-                                rankForYouFeed(
-                                    posts = posts
-                                        .filterNot { hiddenIds.contains(it.postId) || blockedIds.contains(it.authorId) }
-                                        .take(50),
-                                    onSuccess = onSuccess
-                                )
-                            },
-                            onFailure = {
-                                rankForYouFeed(
-                                    posts = posts.filterNot { hiddenIds.contains(it.postId) }.take(50),
-                                    onSuccess = onSuccess
-                                )
-                            }
-                        )
-                    },
-                    onFailure = {
-                        rankForYouFeed(
-                            posts = posts.take(50),
-                            onSuccess = onSuccess
-                        )
-                    }
-                )
+                finishIfReady()
             }
             .addOnFailureListener { error ->
-                onFailure(error.message ?: "Failed to load posts")
+                if (!failed) {
+                    failed = true
+                    onFailure(error.message ?: "Failed to load posts")
+                }
             }
+
+        loadHiddenPostIds(
+            onSuccess = { ids -> hiddenIds = ids; finishIfReady() },
+            onFailure = { finishIfReady() }
+        )
+
+        loadBlockedAuthorIds(
+            onSuccess = { ids -> blockedIds = ids; finishIfReady() },
+            onFailure = { finishIfReady() }
+        )
+
+        if (uid == null) {
+            profile = null
+            finishIfReady()
+        } else {
+            userRepository.loadRecommendationProfile(
+                onSuccess = { p -> profile = p; finishIfReady() },
+                onFailure = { finishIfReady() }
+            )
+        }
     }
 
     // Loads posts from followed authors - both followed users and followed studios.
@@ -680,6 +721,10 @@ class PostRepository {
             }
     }
 
+    // Recounts the likes subcollection and writes the result onto the post's likesCount field, so
+    // feed cards can show a count without reading the whole subcollection every time. "Best
+    // effort" because if this write fails, we just log it rather than surfacing an error - the
+    // like itself already went through, only the displayed count would be briefly stale.
     private fun syncLikeCountBestEffort(postId: String) {
         val postRef = db.collection(Constants.Collections.POSTS).document(postId)
         postRef.collection(LIKES_COLLECTION)
@@ -699,6 +744,8 @@ class PostRepository {
             }
     }
 
+    // Loads the full post first so the activity tracker has real post data (author, style, type)
+    // to attach to the signal, rather than just an id.
     private fun trackPostSignal(postId: String, tracker: (Post) -> Unit) {
         loadPostById(
             postId = postId,
@@ -707,6 +754,8 @@ class PostRepository {
         )
     }
 
+    // Counts the likes subcollection directly, for callers that want a fresh count rather than
+    // the post's possibly-stale denormalized likesCount field.
     fun loadLikeCount(
         postId: String,
         onSuccess: (Long) -> Unit,
@@ -1008,6 +1057,7 @@ class PostRepository {
         }
             .addOnSuccessListener { isRegistered ->
                 activityTrackingRepository.trackEventRegistration(post, isRegistered)
+                if (isRegistered) createEventRegistrationNotification(post, uid)
                 onSuccess(isRegistered)
             }
             .addOnFailureListener { error ->
@@ -1089,6 +1139,8 @@ class PostRepository {
             }
     }
 
+    // Same idea as syncLikeCountBestEffort - recounts the comments subcollection and writes it
+    // onto the post, logging rather than failing if the write doesn't go through.
     private fun syncCommentCountBestEffort(postId: String) {
         val postRef = db.collection(Constants.Collections.POSTS).document(postId)
         postRef.collection(COMMENTS_COLLECTION)
@@ -1305,18 +1357,21 @@ class PostRepository {
             }
     }
 
+    // Notifies whoever owns the post - the studio's shared inbox when it was published as one,
+    // otherwise the personal author - not necessarily whichever manager happened to write it.
     private fun createLikeNotification(postId: String, actorUid: String) {
         loadPostById(
             postId = postId,
             onSuccess = { post ->
                 if (post.authorId == actorUid) return@loadPostById
+                val authorRef = post.authorRef()
                 UserRepository().getUserByUid(
                     uid = actorUid,
                     onSuccess = { actor ->
                         val actorName = "${actor.firstName} ${actor.lastName}".trim().ifBlank { "Dancer" }
                         notificationRepository.createNotification(
-                            recipientUid = post.authorId,
-                            type = InAppNotification.Types.LIKE,
+                            recipient = authorRef.toPartyRef(),
+                            type = if (post.isStudioAuthored()) InAppNotification.Types.STUDIO_POST_LIKE else InAppNotification.Types.LIKE,
                             actorId = actorUid,
                             actorName = actorName,
                             actorProfileImageUrl = actor.profileImageUrl,
@@ -1333,6 +1388,8 @@ class PostRepository {
         )
     }
 
+    // Notifies whoever owns the post that a new comment came in - same recipient logic as
+    // createLikeNotification (the studio's inbox for studio posts, the personal author otherwise).
     private fun createCommentNotification(
         postId: String,
         actorUid: String,
@@ -1344,10 +1401,11 @@ class PostRepository {
             postId = postId,
             onSuccess = { post ->
                 if (post.authorId == actorUid) return@loadPostById
+                val authorRef = post.authorRef()
                 val actorName = "${actor.firstName} ${actor.lastName}".trim().ifBlank { "Dancer" }
                 notificationRepository.createNotification(
-                    recipientUid = post.authorId,
-                    type = InAppNotification.Types.COMMENT,
+                    recipient = authorRef.toPartyRef(),
+                    type = if (post.isStudioAuthored()) InAppNotification.Types.STUDIO_POST_COMMENT else InAppNotification.Types.COMMENT,
                     actorId = actorUid,
                     actorName = actorName,
                     actorProfileImageUrl = actor.profileImageUrl,
@@ -1361,9 +1419,39 @@ class PostRepository {
         )
     }
 
-    // Loads recent comments for one post.
+    // Notifies the event organizer - the studio's shared inbox when it was published as one.
+    private fun createEventRegistrationNotification(post: Post, actorUid: String) {
+        if (post.authorId == actorUid) return
+        val authorRef = post.authorRef()
+        UserRepository().getUserByUid(
+            uid = actorUid,
+            onSuccess = { actor ->
+                val actorName = "${actor.firstName} ${actor.lastName}".trim().ifBlank { "Dancer" }
+                notificationRepository.createNotification(
+                    recipient = authorRef.toPartyRef(),
+                    type = InAppNotification.Types.EVENT_REGISTRATION,
+                    actorId = actorUid,
+                    actorName = actorName,
+                    actorProfileImageUrl = actor.profileImageUrl,
+                    postId = post.postId,
+                    title = "New registration",
+                    message = "$actorName registered for ${post.activityType.ifBlank { "your event" }}.",
+                    dedupeId = "event_registration_${post.postId}_$actorUid"
+                )
+            },
+            onFailure = {}
+        )
+    }
+
+    // Loads recent comments for one post. commentLimit defaults to the full detail-screen amount,
+    // but feed/list callers (HomeFragment, ProfileFragment's own-posts list) pass a much smaller
+    // limit, since PostCardRenderer's inline preview only ever shows
+    // PostCardRenderer.COMMENTS_PREVIEW_LIMIT comments anyway - there's no point fully
+    // engagement-hydrating (2 extra reads per comment, for likes + replies) 30 comments on every
+    // post in a ~50-post feed just to display 3 of them.
     fun loadComments(
         postId: String,
+        commentLimit: Long = 30L,
         onSuccess: (List<PostComment>) -> Unit,
         onFailure: (String) -> Unit = {}
     ) {
@@ -1371,7 +1459,7 @@ class PostRepository {
             .document(postId)
             .collection(COMMENTS_COLLECTION)
             .orderBy("createdAt", Query.Direction.ASCENDING)
-            .limit(30)
+            .limit(commentLimit)
             .get()
             .addOnSuccessListener { snapshot ->
                 val comments = snapshot.documents.mapNotNull { document ->
@@ -1481,7 +1569,11 @@ class PostRepository {
         }
     }
 
-    // Ranks posts using the current user recommendation profile.
+    // Ranks posts using the current user's recommendation profile. Used by
+    // loadRecommendedEventPosts, which has its own small, already-loaded candidate list and so
+    // can just load the profile and rank afterward - loadForYouFeed has a bigger candidate set
+    // and loads its profile in parallel with other independent fetches instead, so it calls
+    // applyForYouRanking directly rather than going through this.
     private fun rankForYouFeed(
         posts: List<Post>,
         onSuccess: (List<Post>) -> Unit
@@ -1493,29 +1585,33 @@ class PostRepository {
         }
 
         userRepository.loadRecommendationProfile(
-            onSuccess = { profile ->
-                val context = RecommendationContext(
-                    userId = uid,
-                    surface = RecommendationSurface.FOR_YOU,
-                    profileLocation = profile.profileLocation,
-                    preferredRecommendationArea = profile.preferredRecommendationArea,
-                    danceStyles = profile.danceStyles,
-                    danceLevel = profile.danceLevel,
-                    recommendationProfile = profile
-                )
-                val ranked = ForYouRankingStrategy.rank(
-                    items = posts,
-                    context = context
-                )
-                logForYouExplanations(ranked.take(10), context)
-                onSuccess(ranked)
-            },
-            onFailure = {
+            onSuccess = { profile -> onSuccess(applyForYouRanking(posts, uid, profile)) },
+            onFailure = { error ->
+                Log.w(TAG_PERMISSION, "rankForYouFeed falling back to non-personalized ranking uid=$uid (recommendation profile failed to load): $error")
                 onSuccess(RecommendationEngine.rankPosts(posts, PostRecommendationProfile()))
             }
         )
     }
 
+    // Builds the ranking context from an already-loaded profile and runs ForYouRankingStrategy
+    // over the candidates - the shared final step behind both loadForYouFeed and rankForYouFeed.
+    private fun applyForYouRanking(posts: List<Post>, uid: String, profile: RecommendationProfile): List<Post> {
+        val context = RecommendationContext(
+            userId = uid,
+            surface = RecommendationSurface.FOR_YOU,
+            profileLocation = profile.profileLocation,
+            preferredRecommendationArea = profile.preferredRecommendationArea,
+            danceStyles = profile.danceStyles,
+            danceLevel = profile.danceLevel,
+            recommendationProfile = profile
+        )
+        val ranked = ForYouRankingStrategy.rank(items = posts, context = context)
+        logForYouExplanations(ranked.take(10), context)
+        return ranked
+    }
+
+    // Debug-only logging of how the For You feed scored its top posts, so ranking behavior can be
+    // checked from Logcat during development. Compiled out of release builds.
     private fun logForYouExplanations(posts: List<Post>, context: RecommendationContext) {
         if (!BuildConfig.DEBUG) return
         posts.forEach { post ->
@@ -1834,6 +1930,10 @@ class PostRepository {
         ).any { it.contains(query, ignoreCase = true) }
     }
 
+    // Checks whether a dance activity's date has passed, trying a few known date formats since
+    // older posts and newer ones don't all store the date the same way. Gives a day of grace
+    // before treating something as past, so an event happening later today doesn't disappear
+    // from feeds first thing in the morning.
     private fun Post.isPastActivityDate(): Boolean {
         val rawDate = activityDate.trim()
         if (rawDate.isBlank()) return false

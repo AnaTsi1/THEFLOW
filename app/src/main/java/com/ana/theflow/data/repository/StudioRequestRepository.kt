@@ -84,6 +84,9 @@ class StudioRequestRepository {
         studioName: String,
         googlePlaceId: String = "",
         address: String = "",
+        latitude: Double? = null,
+        longitude: Double? = null,
+        coverImageUrl: String = "",
         justification: String,
         verificationDetails: String,
         onSuccess: (String) -> Unit,
@@ -107,17 +110,13 @@ class StudioRequestRepository {
         loadRequesterName(uid) { requesterName ->
             val isExternalClaim = googlePlaceId.isNotBlank() && studioId.startsWith("google_")
             if (isExternalClaim) {
-                ensureNoPendingClaim(studioId = studioId, googlePlaceId = googlePlaceId,
-                    onSuccess = {
-                        createClaimRequest(
-                            studioId = studioId, studioName = studioName, requesterUid = uid,
-                            requesterEmail = currentUser.email.orEmpty(), requesterName = requesterName,
-                            googlePlaceId = googlePlaceId, address = address,
-                            justification = justification.trim(), verificationDetails = verificationDetails.trim(),
-                            onSuccess = onSuccess, onFailure = onFailure
-                        )
-                    },
-                    onFailure = onFailure
+                createClaimRequest(
+                    studioId = studioId, studioName = studioName, requesterUid = uid,
+                    requesterEmail = currentUser.email.orEmpty(), requesterName = requesterName,
+                    googlePlaceId = googlePlaceId, address = address,
+                    latitude = latitude, longitude = longitude, coverImageUrl = coverImageUrl,
+                    justification = justification.trim(), verificationDetails = verificationDetails.trim(),
+                    onSuccess = onSuccess, onFailure = onFailure
                 )
                 return@loadRequesterName
             }
@@ -147,24 +146,20 @@ class StudioRequestRepository {
                         return@addOnSuccessListener
                     }
 
-                    ensureNoPendingClaim(studioId = studioId, googlePlaceId = googlePlaceId,
-                        onSuccess = {
-                            createClaimRequest(
-                                studioId = studioId, studioName = studioName, requesterUid = uid,
-                                requesterEmail = currentUser.email.orEmpty(), requesterName = requesterName,
-                                googlePlaceId = googlePlaceId, address = address,
-                                justification = justification.trim(), verificationDetails = verificationDetails.trim(),
-                                onSuccess = onSuccess, onFailure = onFailure
-                            )
-                        },
-                        onFailure = onFailure
+                    createClaimRequest(
+                        studioId = studioId, studioName = studioName, requesterUid = uid,
+                        requesterEmail = currentUser.email.orEmpty(), requesterName = requesterName,
+                        googlePlaceId = googlePlaceId, address = address,
+                        latitude = latitude, longitude = longitude, coverImageUrl = coverImageUrl,
+                        justification = justification.trim(), verificationDetails = verificationDetails.trim(),
+                        onSuccess = onSuccess, onFailure = onFailure
                     )
                 }
                 .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load studio") }
         }
     }
 
-    // Loads requests the signed-in user has submitted.
+    // Loads whatever create/claim requests the signed-in user has submitted so far.
     fun loadMyRequests(onSuccess: (List<StudioRequest>) -> Unit, onFailure: (String) -> Unit) {
         val uid = auth.currentUser?.uid
         if (uid == null) {
@@ -184,46 +179,9 @@ class StudioRequestRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to load your requests") }
     }
 
-    // Checks whether a studio already has a pending claim request.
-    fun loadPendingRequestForStudio(
-        studioId: String,
-        onSuccess: (StudioRequest?) -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        db.collection(Constants.Collections.STUDIO_REQUESTS)
-            .whereEqualTo("studioId", studioId)
-            .whereEqualTo("status", StudioRequest.STATUS_PENDING)
-            .limit(1)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val document = snapshot.documents.firstOrNull()
-                onSuccess(
-                    document?.toObject(StudioRequest::class.java)
-                        ?.copy(requestId = document.id, sourceCollection = StudioRequest.SOURCE_STUDIO_REQUESTS)
-                )
-            }
-            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to check pending requests") }
-    }
-
-    private fun ensureNoPendingClaim(
-        studioId: String,
-        googlePlaceId: String = "",
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        val field = if (googlePlaceId.isBlank()) "studioId" else "googlePlaceId"
-        val value = if (googlePlaceId.isBlank()) studioId else googlePlaceId
-        db.collection(Constants.Collections.STUDIO_REQUESTS)
-            .whereEqualTo(field, value)
-            .whereEqualTo("status", StudioRequest.STATUS_PENDING)
-            .limit(1)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                if (snapshot.isEmpty) onSuccess() else onFailure("This studio already has a pending claim")
-            }
-            .addOnFailureListener { error -> onFailure(error.message ?: "Failed to check pending claims") }
-    }
-
+    // Actually writes the claim request. For a Google Places studio it's just one document, but
+    // for a studio already in our database we also flip its claimStatus to PENDING in the same
+    // batch, so the studio and the request stay in sync.
     private fun createClaimRequest(
         studioId: String,
         studioName: String,
@@ -232,6 +190,9 @@ class StudioRequestRepository {
         requesterName: String,
         googlePlaceId: String,
         address: String,
+        latitude: Double?,
+        longitude: Double?,
+        coverImageUrl: String,
         justification: String,
         verificationDetails: String,
         onSuccess: (String) -> Unit,
@@ -250,6 +211,9 @@ class StudioRequestRepository {
             "googlePlaceId" to googlePlaceId,
             "externalSource" to if (googlePlaceId.isBlank()) "" else "google",
             "address" to address,
+            "latitude" to latitude,
+            "longitude" to longitude,
+            "coverImageUrl" to coverImageUrl,
             "justification" to justification,
             "verificationDetails" to verificationDetails,
             "adminNote" to "",
@@ -281,6 +245,8 @@ class StudioRequestRepository {
             .addOnFailureListener { error -> onFailure(error.message ?: "Failed to submit claim") }
     }
 
+    // Grabs the requester's name off their user doc, so the request has a readable name attached
+    // instead of just a uid.
     private fun loadRequesterName(uid: String, onLoaded: (String) -> Unit) {
         db.collection(Constants.Collections.USERS).document(uid).get()
             .addOnSuccessListener { document ->

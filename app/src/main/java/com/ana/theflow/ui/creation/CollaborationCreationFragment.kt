@@ -1,3 +1,5 @@
+// Composer for choreographer-only collaboration posts - looking for a partner/dancer/teacher etc,
+// with collapsible sections for style, logistics, media, and how to apply.
 package com.ana.theflow.ui.creation
 
 import android.widget.EditText
@@ -6,6 +8,8 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import android.view.View
 import androidx.appcompat.app.AlertDialog
+import com.ana.theflow.data.model.user.User
+import com.ana.theflow.utilities.AccountPermissions
 import com.ana.theflow.utilities.CityOptions
 
 class CollaborationCreationFragment : BaseCreationFragment() {
@@ -13,6 +17,11 @@ class CollaborationCreationFragment : BaseCreationFragment() {
     override val titleText = "Create collaboration"
     override val publishButtonText = "Create"
     override val publishSuccessMessage = "Collaboration created"
+
+    override fun ineligibilityMessage(user: User): String? {
+        if (AccountPermissions.canCreateCollaborationPost(user)) return null
+        return "Collaboration posts are a choreographer-facing tool. Apply for choreographer verification to unlock this."
+    }
 
     private lateinit var description: EditText
     private lateinit var lookingFor: EditText
@@ -27,6 +36,9 @@ class CollaborationCreationFragment : BaseCreationFragment() {
     private lateinit var mediaContainer: LinearLayout
     private lateinit var contactContainer: LinearLayout
 
+    // The always-visible description/lookingFor fields, plus four collapsible sections (style,
+    // logistics, media, applications/contact) that start hidden to keep the form from feeling
+    // overwhelming.
     override fun buildFields(parent: LinearLayout) {
         description = field("Describe the collaboration", minHeightDp = 140, multiLine = true)
         parent.addView(description)
@@ -97,6 +109,8 @@ class CollaborationCreationFragment : BaseCreationFragment() {
         parent.addView(contactContainer)
     }
 
+    // Requires either a description or a "looking for" target - refuses to publish a completely
+    // empty collaboration post.
     override fun buildPayload(): CreatePayload? {
         val body = description.text.toString().trim()
         val target = lookingFor.text.toString().trim()
@@ -124,6 +138,8 @@ class CollaborationCreationFragment : BaseCreationFragment() {
         view.visibility = if (view.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
+    // A text field that's really a tap target for an options list - no free typing, just a
+    // shortcut to picking one of a known set of values.
     private fun pickerField(hint: String, options: List<String>): EditText {
         return field(hint).apply {
             isFocusable = false

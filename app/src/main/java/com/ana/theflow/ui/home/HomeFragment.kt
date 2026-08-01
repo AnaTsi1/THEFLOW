@@ -30,6 +30,7 @@ import com.ana.theflow.databinding.FragmentHomeBinding
 import com.ana.theflow.ui.common.PostCardRenderer
 import com.ana.theflow.ui.common.ResponsiveLayout
 import com.ana.theflow.ui.common.UiText
+import com.ana.theflow.utilities.AccountPermissions
 import androidx.fragment.app.viewModels
 import com.google.firebase.Timestamp
 
@@ -112,6 +113,15 @@ class HomeFragment : Fragment() {
         }
     }
 
+    // A studio approval that lands while Home is already open (rather than the user tapping the
+    // approval notification specifically) would otherwise leave the switcher chip/drawer row
+    // hidden until the app is force-restarted - re-check on every return to Home instead.
+    override fun onResume() {
+        super.onResume()
+        if (_binding == null) return
+        (requireActivity() as MainActivity).refreshActiveAccount { if (_binding != null) renderActiveAccountChip() }
+    }
+
     fun closeDrawerIfOpen(): Boolean {
         if (_binding == null) return false
         if (!binding.homeDRAWER.isDrawerOpen(GravityCompat.START)) return false
@@ -147,8 +157,16 @@ class HomeFragment : Fragment() {
     }
 
     // Reflects the currently active account ("Personal" or the active studio's name) in the chip.
+    // The switcher (chip + drawer row) is only shown at all once the user manages a studio -
+    // it's meaningless to someone who only ever has their personal account.
     private fun renderActiveAccountChip() {
-        val summary = (requireActivity() as MainActivity).activeAccountSummary()
+        val activity = requireActivity() as MainActivity
+        val hasBusinessAccounts = activity.hasBusinessAccounts()
+        binding.homeLAYAccount.visibility = if (hasBusinessAccounts) View.VISIBLE else View.GONE
+        binding.homeMENUSwitchAccount.visibility = if (hasBusinessAccounts) View.VISIBLE else View.GONE
+        if (!hasBusinessAccounts) return
+
+        val summary = activity.activeAccountSummary()
         binding.homeLBLAccount.text = summary?.displayName?.takeIf { summary.subtitle != "Personal account" }
             ?.let { "Posting as: $it" }
             ?: getString(R.string.home_posting_as_personal)
@@ -188,10 +206,17 @@ class HomeFragment : Fragment() {
             dialog.dismiss()
             (requireActivity() as MainActivity).openEventCreation()
         })
-        content.addView(creationChoice("Collaboration", "Find dancers, teachers, creators, studios, or project partners.") {
-            dialog.dismiss()
-            (requireActivity() as MainActivity).openCollaborationCreation()
-        })
+        // Collaboration posts are a choreographer-facing tool - hide the option entirely rather
+        // than showing something that will just bounce with a permission message. If the user
+        // hasn't loaded yet, leave it visible; CollaborationCreationFragment enforces the real
+        // gate (mirrored in Firestore rules) regardless of what's shown here.
+        val user = currentUser
+        if (user == null || AccountPermissions.canCreateCollaborationPost(user)) {
+            content.addView(creationChoice("Collaboration", "Find dancers, teachers, creators, studios, or project partners.") {
+                dialog.dismiss()
+                (requireActivity() as MainActivity).openCollaborationCreation()
+            })
+        }
         dialog.show()
     }
 
@@ -300,6 +325,29 @@ class HomeFragment : Fragment() {
         }
     }
 
+    // Coalesces bursts of renderFeed() triggers into a single actual render. hydrateFeedPost()
+    // fires this once per post (up to 50 times per feed load) as each post's parallel hydration
+    // completes - and renderFeed() itself is not cheap: it removeAllViews()'s and rebuilds every
+    // card in the feed from scratch (plain LinearLayout, no RecyclerView/view-recycling, each card
+    // includes Glide image binds and full inline comment rendering). Before parallelizing
+    // hydrateFeedPost's 5 reads, each post's hydration took 5 sequential round-trips, which
+    // naturally spread the ~50 resulting renderFeed() calls out over a wider, jitter-widened
+    // window. Collapsing each post to a single round-trip made every post's hydration land in a
+    // much narrower time window - often within the same Firestore local-cache response batch -
+    // which meant up to 50 full-list rebuilds could end up queued back-to-back on the main
+    // thread's message queue with no yielding in between, easily exceeding the ~5s ANR input-
+    // dispatch threshold. Debouncing to one coalesced render per burst fixes this without losing
+    // the actual latency win the parallelization was for.
+    private fun scheduleRenderFeed() {
+        val binding = _binding ?: return
+        binding.homeLAYPosts.removeCallbacks(renderFeedRunnable)
+        binding.homeLAYPosts.postDelayed(renderFeedRunnable, RENDER_COALESCE_DELAY_MS)
+    }
+
+    private val renderFeedRunnable = Runnable {
+        if (_binding != null) renderFeed()
+    }
+
     private fun renderFeed() {
         val previousScrollY = binding.homeSCROLLFeed.scrollY
         val hadRenderedContent = binding.homeLAYPosts.childCount > 0
@@ -354,94 +402,63 @@ class HomeFragment : Fragment() {
         return visibleRatio >= MIN_VISIBLE_IMPRESSION_RATIO && Rect.intersects(rect, viewport)
     }
 
+    // Fetches everything needed to render one post card - comments, a fresh like count,
+    // whether the current user has liked/saved it, and (for event posts) their registration
+    // state - all in parallel instead of the 5-deep sequential chain this used to be
+    // (comments -> likeCount -> isLiked -> isSaved -> isEventRegistered). None of these five
+    // reads depend on each other's result, so chaining them one after another only ever added
+    // latency; this was the dominant cost of opening Home with a cold cache, multiplied by every
+    // post on the feed.
     private fun hydrateFeedPost(post: Post, requestId: Long, requestedFeed: HomeFeedTab) {
+        var comments: List<PostComment> = emptyList()
+        var likeCount: Long = post.likesCount
+        var isLiked = false
+        var isSaved = false
+        var isEventRegistered = false
+        var pending = 5
+
+        fun finishIfReady() {
+            pending -= 1
+            if (pending > 0) return
+            if (_binding == null) return
+            if (viewModel.requestIdFor(requestedFeed) != requestId) return
+            viewModel.updateItem(post.postId) {
+                it.copy(
+                    post = post.copy(likesCount = likeCount),
+                    comments = comments,
+                    isLiked = isLiked,
+                    isSaved = isSaved,
+                    isEventRegistered = isEventRegistered
+                )
+            }
+            if (viewModel.selectedFeed == requestedFeed) scheduleRenderFeed()
+        }
+
         postRepository.loadComments(
             postId = post.postId,
-            onSuccess = { comments ->
-                if (_binding == null) return@loadComments
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@loadComments
-                loadEngagementState(post, comments, requestId, requestedFeed)
-            },
-            onFailure = {
-                if (_binding == null) return@loadComments
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@loadComments
-                loadEngagementState(post, emptyList(), requestId, requestedFeed)
-            }
+            commentLimit = PostCardRenderer.COMMENTS_PREVIEW_LIMIT.toLong(),
+            onSuccess = { comments = it; finishIfReady() },
+            onFailure = { finishIfReady() }
         )
-    }
-
-    // Loads per-user engagement state before rendering a post card.
-    private fun loadEngagementState(post: Post, comments: List<PostComment>, requestId: Long, requestedFeed: HomeFeedTab) {
         postRepository.loadLikeCount(
             postId = post.postId,
-            onSuccess = { likeCount ->
-                if (_binding == null) return@loadLikeCount
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@loadLikeCount
-                loadEngagementStateWithCount(post.copy(likesCount = likeCount), comments, requestId, requestedFeed)
-            },
-            onFailure = {
-                if (_binding == null) return@loadLikeCount
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@loadLikeCount
-                loadEngagementStateWithCount(post, comments, requestId, requestedFeed)
-            }
+            onSuccess = { likeCount = it; finishIfReady() },
+            onFailure = { finishIfReady() }
         )
-    }
-
-    private fun loadEngagementStateWithCount(post: Post, comments: List<PostComment>, requestId: Long, requestedFeed: HomeFeedTab) {
         postRepository.isPostLikedByCurrentUser(
             postId = post.postId,
-            onSuccess = { isLiked ->
-                if (_binding == null) return@isPostLikedByCurrentUser
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@isPostLikedByCurrentUser
-                postRepository.isPostSavedByCurrentUser(
-                    postId = post.postId,
-                    onSuccess = { isSaved ->
-                        if (_binding == null) return@isPostSavedByCurrentUser
-                        if (viewModel.requestIdFor(requestedFeed) != requestId) return@isPostSavedByCurrentUser
-                        loadEventRegistrationState(post, comments, isLiked, isSaved, requestId, requestedFeed)
-                    },
-                    onFailure = {
-                        if (_binding == null) return@isPostSavedByCurrentUser
-                        if (viewModel.requestIdFor(requestedFeed) != requestId) return@isPostSavedByCurrentUser
-                        loadEventRegistrationState(post, comments, isLiked, isSaved = false, requestId, requestedFeed)
-                    }
-                )
-            },
-            onFailure = {
-                if (_binding == null) return@isPostLikedByCurrentUser
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@isPostLikedByCurrentUser
-                loadEventRegistrationState(post, comments, isLiked = false, isSaved = false, requestId, requestedFeed)
-            }
+            onSuccess = { isLiked = it; finishIfReady() },
+            onFailure = { finishIfReady() }
         )
-    }
-
-    // Loads event registration state for activity posts before rendering.
-    private fun loadEventRegistrationState(
-        post: Post,
-        comments: List<PostComment>,
-        isLiked: Boolean,
-        isSaved: Boolean,
-        requestId: Long,
-        requestedFeed: HomeFeedTab
-    ) {
+        postRepository.isPostSavedByCurrentUser(
+            postId = post.postId,
+            onSuccess = { isSaved = it; finishIfReady() },
+            onFailure = { finishIfReady() }
+        )
         postRepository.isEventRegisteredByCurrentUser(
             post = post,
-            onSuccess = { isRegistered ->
-                if (_binding == null) return@isEventRegisteredByCurrentUser
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@isEventRegisteredByCurrentUser
-                viewModel.updateItem(post.postId) {
-                    it.copy(post = post, comments = comments, isLiked = isLiked, isSaved = isSaved, isEventRegistered = isRegistered)
-                }
-                if (viewModel.selectedFeed == requestedFeed) renderFeed()
-            },
-            onFailure = {
-                if (_binding == null) return@isEventRegisteredByCurrentUser
-                if (viewModel.requestIdFor(requestedFeed) != requestId) return@isEventRegisteredByCurrentUser
-                viewModel.updateItem(post.postId) {
-                    it.copy(post = post, comments = comments, isLiked = isLiked, isSaved = isSaved, isEventRegistered = false)
-                }
-                if (viewModel.selectedFeed == requestedFeed) renderFeed()
-            }
+            onSuccess = { isEventRegistered = it; finishIfReady() },
+            onFailure = { finishIfReady() }
         )
     }
 
@@ -865,6 +882,7 @@ class HomeFragment : Fragment() {
     override fun onDestroyView() {
         viewModel.saveScroll(binding.homeSCROLLFeed.scrollY)
         binding.homeLAYPosts.removeCallbacks(trackVisibleImpressionsRunnable)
+        binding.homeLAYPosts.removeCallbacks(renderFeedRunnable)
         ActiveAccountHolder.removeListener(activeAccountListener)
         super.onDestroyView()
         _binding = null
@@ -872,6 +890,7 @@ class HomeFragment : Fragment() {
 
     private companion object {
         const val IMPRESSION_VISIBLE_DELAY_MS = 1200L
+        const val RENDER_COALESCE_DELAY_MS = 120L
         const val MIN_VISIBLE_IMPRESSION_RATIO = 0.5f
         const val MAX_IMPRESSIONS_PER_BATCH = 8
     }

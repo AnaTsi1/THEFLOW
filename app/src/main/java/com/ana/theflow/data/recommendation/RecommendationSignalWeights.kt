@@ -1,5 +1,12 @@
+// Every tunable number the recommendation engine uses to turn a raw behavioral signal (a like, a
+// save, a hide) into a score change - kept in one file so the actual weighting can be reasoned
+// about and adjusted without hunting through the scoring logic itself.
 package com.ana.theflow.data.recommendation
 
+// How much each user action should move their learned recommendation score. The first block is
+// the base weight per action (a like moves it less than a save, a hide moves it a lot in the
+// other direction); the "*_FACTOR" constants below control how much of that weight actually
+// applies to each dimension - style, creator, location, and so on - for a given action.
 object RecommendationSignalWeights {
     const val IMPRESSION = 0.0
     const val FAST_SKIP = -0.25
