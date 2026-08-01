@@ -1,17 +1,16 @@
+// Thin wrapper around a studio's claim status, used by screens that just need to know whether a
+// studio is claimed/pending/available - actual claim submission is handled by StudioRequestRepository.
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.utilities.Constants
 import com.google.firebase.firestore.FirebaseFirestore
 
-// Thin legacy facade kept only so existing UI call sites (DetailFragment) keep compiling.
-// Actual request submission now goes through StudioRequestRepository; this class is
-// removed entirely once callers are migrated to StudioRequestRepository directly (Phase 6).
 class StudioClaimRepository {
 
     private val db = FirebaseFirestore.getInstance()
     private val studioRequestRepository = StudioRequestRepository()
 
-    // Loads the claim status for a studio.
+    // Loads a studio's current claim status and who owns it, if anyone.
     fun loadStudioClaimState(
         studioId: String,
         onSuccess: (StudioClaimState) -> Unit,
@@ -43,8 +42,7 @@ class StudioClaimRepository {
             }
     }
 
-    // Submits a claim request for a studio. Any signed-in dancer may request - permissions are
-    // only ever granted by an admin approving the resulting request.
+    // Submits a claim request. Anyone signed in can request a claim, but an admin still has to approve it before they actually get any permissions.
     fun submitClaim(
         studioId: String,
         studioName: String,
@@ -67,6 +65,7 @@ class StudioClaimRepository {
         )
     }
 
+    // A studio's claim status and current owner, if it has one.
     data class StudioClaimState(
         val claimStatus: String = "",
         val ownerUid: String = ""

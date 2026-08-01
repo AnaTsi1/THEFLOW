@@ -1,3 +1,6 @@
+// Bottom-anchored account switcher, listing the personal account plus every managed studio.
+// This app has no Material Components dependency, so this is a plain DialogFragment positioned
+// at the bottom rather than a BottomSheetDialogFragment.
 package com.ana.theflow.ui.account
 
 import android.graphics.Color
@@ -16,15 +19,15 @@ import androidx.fragment.app.activityViewModels
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.account.AccountSummary
+import com.ana.theflow.ui.settings.dp
 import com.bumptech.glide.Glide
 
-// Bottom-anchored account switcher, listing the personal account plus every managed studio.
-// This app has no Material Components dependency, so this is a plain DialogFragment positioned
-// at the bottom rather than a BottomSheetDialogFragment.
 class AccountSwitcherDialog : DialogFragment() {
 
     private val accountViewModel: ActiveAccountViewModel by activityViewModels()
 
+    // Builds the dialog's whole layout in code: a title, one row per account, and a "create or
+    // claim a studio" link at the bottom.
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val context = requireContext()
         val root = LinearLayout(context).apply {
@@ -44,7 +47,7 @@ class AccountSwitcherDialog : DialogFragment() {
         accountViewModel.accounts.forEach { summary -> root.addView(accountRow(summary)) }
 
         root.addView(TextView(context).apply {
-            text = "Create or claim a studio ->"
+            text = "Create or claim a studio  >"
             setTextColor(context.getColor(R.color.flow_brand))
             textSize = 14f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -60,6 +63,8 @@ class AccountSwitcherDialog : DialogFragment() {
         return root
     }
 
+    // Builds one row: avatar, name + subtitle, and a checkmark if this is the currently active
+    // account. Tapping the row switches to that account and closes the dialog.
     private fun accountRow(summary: AccountSummary): View {
         val context = requireContext()
         val isActive = summary.account == accountViewModel.active
@@ -116,6 +121,8 @@ class AccountSwitcherDialog : DialogFragment() {
         return row
     }
 
+    // Strips the default dialog chrome (background, sizing, position) so it looks like a sheet
+    // anchored to the bottom of the screen instead of a centered popup.
     override fun onStart() {
         super.onStart()
         dialog?.window?.apply {
@@ -128,8 +135,4 @@ class AccountSwitcherDialog : DialogFragment() {
     companion object {
         const val TAG = "AccountSwitcherDialog"
     }
-}
-
-private fun Int.dp(): Int {
-    return (this * android.content.res.Resources.getSystem().displayMetrics.density).toInt()
 }

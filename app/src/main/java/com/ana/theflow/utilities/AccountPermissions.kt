@@ -36,6 +36,13 @@ object AccountPermissions {
         return isAdmin(user) || studio.ownerUid == user.uid || user.uid in studio.managerUids
     }
 
+    // Collaboration posts ("looking for a dancer/choreographer/project partner") are a
+    // choreographer-facing tool, gated the same way in Firestore rules - this is a UI-convenience
+    // mirror of that authorization boundary, not the source of truth for it.
+    fun canCreateCollaborationPost(user: User): Boolean {
+        return isAdmin(user) || isVerifiedChoreographer(user)
+    }
+
     // Display-only badges. Never used for authorization - authorization always reads the
     // underlying verifiedTeacher/verifiedChoreographer/managedStudioIds fields directly.
     fun badges(user: User): List<String> {

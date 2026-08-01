@@ -1,3 +1,5 @@
+// Backs the login and register screens: validates input, talks to AuthRepository/UserRepository,
+// and exposes loading/error state as LiveData for the fragments to observe.
 package com.ana.theflow.ui.auth
 
 import androidx.lifecycle.LiveData
@@ -104,6 +106,18 @@ class AuthViewModel : ViewModel() {
         _uiState.value = _uiState.value?.copy(errorMessage = null) ?: AuthUiState()
     }
 
+    // Requests a password reset email. Reports the same message on success or failure so the
+    // result never reveals whether the address belongs to a real account.
+    fun sendPasswordReset(email: String, onResult: (String) -> Unit) {
+        if (!ValidationUtils.isEmailValid(email)) {
+            onResult("Please enter a valid email address")
+            return
+        }
+        authRepository.sendPasswordReset(email) {
+            onResult("If an account exists for this email, a password reset link has been sent.")
+        }
+    }
+
     // Creates a Firestore profile for a new user.
     private fun createUserProfile(
         firstName: String,
@@ -171,6 +185,8 @@ class AuthViewModel : ViewModel() {
     }
 }
 
+// What the login/register screens need to render: a spinner while a request is in flight, and
+// an error message to show if the last attempt failed.
 data class AuthUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null

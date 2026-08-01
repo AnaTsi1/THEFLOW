@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
@@ -42,6 +43,7 @@ class DetailFragment : Fragment() {
 
     // Draws the screen content from current data.
     private fun render(selected: DiscoveryItem) {
+        binding.detailIMGHeader.text = selected.displayType.ifBlank { selected.type }.uppercase()
         binding.detailLBLTitle.text = selected.title
         binding.detailLBLMeta.text =
             "${selected.studio} / ${selected.teacher}\n${selected.style} / ${selected.level} / ${selected.location}"
@@ -68,6 +70,9 @@ class DetailFragment : Fragment() {
                 }
             )
         }
+        // Following isn't meaningful for an external Google Places result - it isn't an entity
+        // that actually exists in THE FLOW to follow. Only shown for internal items.
+        binding.detailBTNFollow.visibility = if (selected.source == DiscoveryItem.SOURCE_GOOGLE) View.GONE else View.VISIBLE
         binding.detailBTNFollow.setOnClickListener {
             DiscoveryRepository.trackSave(selected)
             activityTrackingRepository.trackFollowUser(
@@ -159,36 +164,53 @@ class DetailFragment : Fragment() {
             studioId = selected.id,
             studioName = selected.studio,
             googlePlaceId = selected.googlePlaceId,
-            address = selected.address
+            address = selected.address,
+            latitude = selected.latitude,
+            longitude = selected.longitude,
+            coverImageUrl = selected.coverImageUrl
         )
     }
 
+    // Navigate/Call/Website/Maps are all secondary, situational actions (only as many as the
+    // Google Place actually has data for) - showing each as its own full-size button crowded
+    // this card next to the one action that actually matters here (Claim Studio). Consolidated
+    // into a single overflow menu, same PopupMenu pattern PostCardRenderer already uses for its
+    // own "more options" affordance.
     private fun configureExternalActions(selected: DiscoveryItem) {
         val isExternal = selected.source == DiscoveryItem.SOURCE_GOOGLE
-        binding.detailLAYExternalActions.visibility = if (isExternal) View.VISIBLE else View.GONE
         binding.detailLBLAttribution.visibility = if (isExternal) View.VISIBLE else View.GONE
-        if (!isExternal) return
-
-        binding.detailBTNNavigate.isEnabled = selected.latitude != null && selected.longitude != null
-        binding.detailBTNNavigate.setOnClickListener {
-            val lat = selected.latitude ?: return@setOnClickListener
-            val lng = selected.longitude ?: return@setOnClickListener
-            openUri("google.navigation:q=$lat,$lng")
+        if (!isExternal) {
+            binding.detailLAYExternalActions.visibility = View.GONE
+            return
         }
 
-        binding.detailBTNCall.isEnabled = selected.phoneNumber.isNotBlank()
-        binding.detailBTNCall.setOnClickListener {
-            openUri("tel:${selected.phoneNumber}")
-        }
+        val actions = listOfNotNull(
+            (selected.latitude != null && selected.longitude != null).takeIf { it }?.let {
+                getString(R.string.detail_navigate) to { openUri("google.navigation:q=${selected.latitude},${selected.longitude}") }
+            },
+            selected.phoneNumber.takeIf { it.isNotBlank() }?.let {
+                getString(R.string.detail_call_studio) to { openUri("tel:${selected.phoneNumber}") }
+            },
+            selected.websiteUrl.takeIf { it.isNotBlank() }?.let {
+                getString(R.string.detail_open_website) to { openUri(selected.websiteUrl) }
+            },
+            selected.googleMapsUrl.takeIf { it.isNotBlank() }?.let {
+                getString(R.string.detail_open_google_maps) to { openUri(selected.googleMapsUrl) }
+            }
+        )
+        binding.detailLAYExternalActions.visibility = if (actions.isEmpty()) View.GONE else View.VISIBLE
+        binding.detailBTNMoreActions.setOnClickListener { anchor -> showMoreActionsMenu(anchor, actions) }
+    }
 
-        binding.detailBTNWebsite.isEnabled = selected.websiteUrl.isNotBlank()
-        binding.detailBTNWebsite.setOnClickListener {
-            openUri(selected.websiteUrl)
-        }
-
-        binding.detailBTNMaps.isEnabled = selected.googleMapsUrl.isNotBlank()
-        binding.detailBTNMaps.setOnClickListener {
-            openUri(selected.googleMapsUrl)
+    private fun showMoreActionsMenu(anchor: View, actions: List<Pair<String, () -> Unit>>) {
+        PopupMenu(anchor.context, anchor).apply {
+            actions.forEach { (label, _) -> menu.add(label) }
+            setOnMenuItemClickListener { item ->
+                val action = actions.firstOrNull { it.first == item.title.toString() } ?: return@setOnMenuItemClickListener false
+                action.second()
+                true
+            }
+            show()
         }
     }
 

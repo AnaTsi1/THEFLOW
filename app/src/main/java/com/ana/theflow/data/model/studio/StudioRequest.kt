@@ -24,6 +24,12 @@ data class StudioRequest(
     val googlePlaceId: String = "",
     val externalSource: String = "",
     val address: String = "",
+    // Carried over from the Google Places result the user was looking at when they hit "Claim
+    // Studio," so the studio created from an approved claim has real coordinates and a city
+    // instead of being invisible to the recommendation engine's distance-based ranking.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val coverImageUrl: String = "",
 
     // CREATE only - the admin-reviewable draft profile
     val draftDisplayName: String = "",
@@ -54,9 +60,8 @@ data class StudioRequest(
         const val SOURCE_STUDIO_REQUESTS = "studioRequests"
         const val SOURCE_LEGACY_STUDIO_CLAIMS = "studioClaims"
 
-        // Maps a legacy StudioClaim document into the unified StudioRequest shape so the
-        // in-app admin queue can review both flows through a single screen while the old
-        // collection drains.
+        // Converts an old-style claim into a StudioRequest, so the admin review screen can show
+        // both old and new claims in one list instead of two separate ones.
         fun fromLegacyClaim(claim: StudioClaim): StudioRequest {
             return StudioRequest(
                 requestId = claim.id,

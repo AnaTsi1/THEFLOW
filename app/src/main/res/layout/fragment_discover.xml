@@ -1,202 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/discover_SCROLL_root"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_discover_screen"
-    android:clipToPadding="false"
-    android:fillViewport="true"
+    android:orientation="vertical"
     android:paddingStart="@dimen/discover_screen_padding"
     android:paddingTop="18dp"
-    android:paddingEnd="@dimen/discover_screen_padding"
-    android:paddingBottom="92dp">
+    android:paddingEnd="@dimen/discover_screen_padding">
 
-    <LinearLayout
-        android:id="@+id/discover_LAY_content"
+    <TextView
+        android:id="@+id/discover_LBL_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingBottom="24dp">
+        android:text="Discover"
+        android:textColor="@color/discover_ink"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/discover_LBL_explanation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:lineSpacingExtra="2dp"
+        android:text="Find classes, events, studios, and dancers that fit your flow."
+        android:textColor="@color/discover_text_secondary"
+        android:textSize="14sp" />
+
+    <LinearLayout
+        android:id="@+id/discover_LAY_search_box"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:layout_marginTop="@dimen/discover_section_gap"
+        android:background="@drawable/bg_discover_input"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="8dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_discover_24"
+            android:tint="@color/discover_text_muted" />
 
         <TextView
-            android:id="@+id/discover_LBL_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Discover"
-            android:textColor="@color/discover_ink"
-            android:textSize="28sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/discover_LBL_explanation"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:lineSpacingExtra="2dp"
-            android:text="Find classes, events, studios, and dancers that fit your flow."
-            android:textColor="@color/discover_text_secondary"
-            android:textSize="14sp" />
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_search_box"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:background="@drawable/bg_discover_input"
-            android:clickable="true"
-            android:focusable="true"
+            android:id="@+id/discover_EDT_search"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
             android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="14dp"
-            android:paddingEnd="8dp">
-
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/ic_discover_24"
-                android:tint="@color/discover_text_muted" />
-
-            <TextView
-                android:id="@+id/discover_EDT_search"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:paddingStart="10dp"
-                android:text="Search styles, studios, teachers, events..."
-                android:textColor="@color/discover_text_muted"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <ProgressBar
-            android:id="@+id/discover_PRG_searching"
-            style="?android:attr/progressBarStyleSmall"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:indeterminate="true"
-            android:indeterminateTint="@color/discover_purple"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/discover_LBL_recommended_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="Recommended for You"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:overScrollMode="never"
-            android:scrollbars="none">
-
-            <LinearLayout
-                android:id="@+id/discover_LAY_recommended"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingEnd="4dp" />
-        </HorizontalScrollView>
-
-        <TextView
-            android:id="@+id/discover_LBL_popular_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="Trending This Week"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:id="@+id/discover_LAY_popular"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <TextView
-            android:id="@+id/discover_LBL_search_results_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="Studios You May Like"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:overScrollMode="never"
-            android:scrollbars="none">
-
-            <LinearLayout
-                android:id="@+id/discover_LAY_search_results"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingEnd="4dp" />
-        </HorizontalScrollView>
-
-        <TextView
-            android:id="@+id/discover_LBL_map_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/discover_section_gap"
-            android:text="Explore Near You"
-            android:textColor="@color/discover_ink"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <FrameLayout
-            android:id="@+id/discover_LAY_map"
-            android:layout_width="match_parent"
-            android:layout_height="210dp"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_discover_map"
-            android:padding="2dp"
-            android:visibility="gone">
-
-            <androidx.fragment.app.FragmentContainerView
-                android:id="@+id/discover_MAP_results"
-                android:name="com.google.android.gms.maps.SupportMapFragment"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
-
-            <Button
-                android:id="@+id/discover_BTN_search_area"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_gravity="top|end"
-                android:layout_margin="12dp"
-                android:background="@drawable/bg_discover_segment_active"
-                android:minWidth="0dp"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:text="Open Map"
-                android:textAllCaps="false"
-                android:textColor="@color/white"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-        </FrameLayout>
-
-        <TextView
-            android:id="@+id/discover_LBL_google_attribution"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/discover_google_attribution"
+            android:paddingStart="10dp"
+            android:text="Search styles, studios, teachers, events..."
             android:textColor="@color/discover_text_muted"
-            android:textSize="11sp"
-            android:visibility="gone" />
+            android:textSize="14sp" />
     </LinearLayout>
-</ScrollView>
+
+    <ProgressBar
+        android:id="@+id/discover_PRG_searching"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="24dp"
+        android:indeterminate="true"
+        android:indeterminateTint="@color/discover_purple"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/discover_LBL_loading"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center_horizontal"
+        android:text="Finding your flow..."
+        android:textColor="@color/discover_text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/discover_SWIPE_refresh"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/discover_RCY_sections"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:paddingBottom="16dp" />
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</LinearLayout>

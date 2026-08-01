@@ -22,6 +22,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.messaging.PartyRef
 import com.ana.theflow.data.model.user.User
 import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.MessagingRepository
@@ -158,7 +159,7 @@ class MessageUserPickerFragment : Fragment() {
         users.distinctBy { it.uid }.forEach { user ->
             list.addView(userRow(user, showFollowedBadge))
             if (!eligibility.containsKey(user.uid)) {
-                messagingRepository.canStartConversationWith(user.uid) { canMessage, reason ->
+                messagingRepository.canStartConversationWith(target = PartyRef.user(user.uid)) { canMessage, reason ->
                     if (!isAdded) return@canStartConversationWith
                     eligibility[user.uid] = canMessage to reason
                     renderUsers(title, users, showFollowedBadge)
@@ -238,7 +239,7 @@ class MessageUserPickerFragment : Fragment() {
     private fun openConversation(user: User) {
         progress.visibility = View.VISIBLE
         messagingRepository.resolveOrCreateConversation(
-            otherUserId = user.uid,
+            target = PartyRef.user(user.uid),
             onSuccess = { conversationId ->
                 if (!isAdded) return@resolveOrCreateConversation
                 progress.visibility = View.GONE

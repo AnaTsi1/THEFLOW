@@ -15,13 +15,15 @@ import androidx.core.content.getSystemService
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.messaging.Conversation
 import com.ana.theflow.data.model.messaging.Message
-import com.ana.theflow.data.repository.AuthRepository
 import com.ana.theflow.data.repository.MessagingRepository
 import com.ana.theflow.data.repository.SettingsRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.databinding.FragmentChatBinding
 import com.ana.theflow.ui.common.UiText
+import com.ana.theflow.utilities.Constants
 import com.bumptech.glide.Glide
 import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
@@ -33,7 +35,6 @@ class ChatFragment : Fragment() {
     private var _binding: FragmentChatBinding? = null
     private val binding get() = _binding!!
     private val messagingRepository = MessagingRepository()
-    private val authRepository = AuthRepository()
     private val settingsRepository = SettingsRepository()
     private var messagesListener: ListenerRegistration? = null
     private var conversation: Conversation? = null
@@ -91,12 +92,17 @@ class ChatFragment : Fragment() {
     }
 
     private fun renderHeader(conversation: Conversation) {
-        val currentUid = authRepository.getCurrentUserUid().orEmpty()
-        val otherUid = conversation.participantIds.firstOrNull { it != currentUid }.orEmpty()
-        val other = conversation.participantInfo[otherUid]
+        val account = ActiveAccountHolder.current()
+        val other = ConversationDisplay.counterparty(conversation, account)
         binding.chatLBLName.text = other?.name?.ifBlank { "Dancer" } ?: "Dancer"
         binding.chatBTNProfile.setOnClickListener {
-            if (otherUid.isNotBlank()) (requireActivity() as MainActivity).openUserProfile(otherUid)
+            val otherId = other?.uid.orEmpty()
+            if (otherId.isBlank()) return@setOnClickListener
+            if (other?.type == Constants.EntityType.STUDIO) {
+                (requireActivity() as MainActivity).openStudioProfile(otherId)
+            } else {
+                (requireActivity() as MainActivity).openUserProfile(otherId)
+            }
         }
         binding.chatIMGAvatar.setImageResource(android.R.color.transparent)
         if (!other?.profileImageUrl.isNullOrBlank()) {
@@ -127,14 +133,14 @@ class ChatFragment : Fragment() {
     }
 
     private fun renderMessages(messages: List<Message>) {
-        val currentUid = authRepository.getCurrentUserUid().orEmpty()
+        val account = ActiveAccountHolder.current()
         val shouldScroll = isNearBottom()
         binding.chatLAYMessages.removeAllViews()
         binding.chatLBLMessage.visibility = if (messages.isEmpty()) View.VISIBLE else View.GONE
         binding.chatLBLMessage.text = "No messages yet. Start the conversation."
         messages.forEachIndexed { index, message ->
             val previous = messages.getOrNull(index - 1)
-            binding.chatLAYMessages.addView(messageRow(message, previous, currentUid))
+            binding.chatLAYMessages.addView(messageRow(message, previous, account))
         }
         if (shouldScroll || messages.size <= 1) {
             binding.chatSCROLLMessages.post {
@@ -143,14 +149,27 @@ class ChatFragment : Fragment() {
         }
     }
 
-    private fun messageRow(message: Message, previous: Message?, currentUid: String): View {
+    private fun messageRow(message: Message, previous: Message?, account: ActiveAccount): View {
         val context = requireContext()
-        val isMine = message.senderId == currentUid
+        val isMine = ConversationDisplay.isMine(message, account)
         val grouped = previous?.senderId == message.senderId
+        // "via <actorName>" clarifies which manager sent a bubble when several managers share a
+        // studio's inbox - the customer on the other side never sees this line.
+        val showActorByline = account is ActiveAccount.StudioAccount &&
+            ConversationDisplay.isStudioAuthoredMessage(message) &&
+            message.actorName.isNotBlank()
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = if (isMine) Gravity.END else Gravity.START
             setPadding(0, if (grouped) 3.dp() else 9.dp(), 0, 0)
+        }
+        if (showActorByline) {
+            row.addView(TextView(context).apply {
+                text = "via ${message.actorName}"
+                setTextColor(context.getColor(R.color.text_muted))
+                textSize = 10f
+                setPadding(4.dp(), 0, 4.dp(), 2.dp())
+            })
         }
         row.addView(TextView(context).apply {
             text = message.text

@@ -19,8 +19,7 @@
             android:layout_height="170dp"
             android:background="@drawable/bg_media_gradient"
             android:gravity="center"
-            android:text="DANCE"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_ink"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -29,7 +28,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/flow_ink"
             android:textSize="24sp"
             android:textStyle="bold" />
 
@@ -38,7 +37,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/flow_text_secondary"
             android:textSize="15sp" />
 
         <TextView
@@ -46,9 +45,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@drawable/bg_card"
+            android:background="@drawable/bg_flow_card"
             android:padding="14dp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/flow_text_secondary"
             android:textSize="14sp" />
 
         <LinearLayout
@@ -56,51 +55,31 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
+            android:background="@drawable/bg_flow_card"
+            android:gravity="center_vertical"
             android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="4dp"
             android:visibility="gone">
 
-            <Button
-                android:id="@+id/detail_BTN_navigate"
+            <TextView
                 android:layout_width="0dp"
-                android:layout_height="42dp"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:background="@drawable/bg_button_secondary"
-                android:text="@string/detail_navigate"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:text="Directions, call, website &amp; map"
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="13sp" />
 
-            <Button
-                android:id="@+id/detail_BTN_call"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_button_secondary"
-                android:text="@string/detail_call_studio"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/detail_BTN_website"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_button_secondary"
-                android:text="@string/detail_open_website"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/detail_BTN_maps"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_button_secondary"
-                android:text="@string/detail_open_google_maps"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+            <ImageButton
+                android:id="@+id/detail_BTN_more_actions"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_flow_icon_button"
+                android:contentDescription="@string/detail_more_actions"
+                android:scaleType="center"
+                android:src="@drawable/ic_more_horizontal_24" />
         </LinearLayout>
 
         <TextView
@@ -109,48 +88,51 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:text="@string/detail_google_attribution"
-            android:textColor="@color/text_muted"
+            android:textColor="@color/flow_text_muted"
             android:textSize="11sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/detail_BTN_claim_studio"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_flow_button_primary"
+            android:text="Claim Studio"
+            android:textAllCaps="false"
+            android:textColor="@color/flow_surface"
+            android:textStyle="bold"
             android:visibility="gone" />
 
         <Button
             android:id="@+id/detail_BTN_save"
             android:layout_width="match_parent"
             android:layout_height="50dp"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_button_primary"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_flow_button_secondary"
             android:text="Save"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold" />
+            android:textAllCaps="false"
+            android:textColor="@color/flow_brand" />
 
         <Button
             android:id="@+id/detail_BTN_follow"
             android:layout_width="match_parent"
             android:layout_height="50dp"
             android:layout_marginTop="10dp"
-            android:background="@drawable/bg_button_secondary"
+            android:background="@drawable/bg_flow_button_secondary"
             android:text="Follow Studio"
-            android:textColor="@color/text_primary" />
-
-        <Button
-            android:id="@+id/detail_BTN_claim_studio"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_button_primary"
-            android:text="Claim Studio"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold"
-            android:visibility="gone" />
+            android:textAllCaps="false"
+            android:textColor="@color/flow_brand" />
 
         <Button
             android:id="@+id/detail_BTN_back"
             android:layout_width="match_parent"
             android:layout_height="46dp"
             android:layout_marginTop="12dp"
-            android:background="@drawable/bg_button_secondary"
+            android:background="@drawable/bg_flow_button_secondary"
             android:text="Back"
-            android:textColor="@color/text_secondary" />
+            android:textAllCaps="false"
+            android:textColor="@color/flow_brand" />
 
     </LinearLayout>
 </ScrollView>

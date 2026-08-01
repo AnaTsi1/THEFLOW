@@ -1,5 +1,9 @@
+// The core shapes the recommendation engine passes around - a user's learned profile, the
+// context one ranking request runs in, and the explanation attached to each ranked result.
 package com.ana.theflow.data.recommendation
 
+// Everything we know about one user for recommendation purposes - both what they told us
+// directly (styles, level, city) and what we've learned from watching what they do.
 data class RecommendationProfile(
     val userId: String = "",
     val danceStyles: List<String> = emptyList(),
@@ -24,10 +28,13 @@ data class RecommendationProfile(
     val seenItemIds: Set<String> = emptySet()
 ) {
     companion object {
+        // A blank profile with nothing learned yet - our safe default before the real one has loaded.
         fun empty(userId: String = "") = RecommendationProfile(userId = userId)
     }
 }
 
+// Extra info that rides along with one learned score (for a style, studio, teacher, etc) - when
+// it last changed and how often.
 data class RecommendationScoreMetadata(
     val score: Double = 0.0,
     val lastUpdatedMillis: Long = 0L,
@@ -37,6 +44,8 @@ data class RecommendationScoreMetadata(
     val negativeCount: Int = 0
 )
 
+// Everything a ranking strategy needs to score items for one request - who's asking, where
+// they are, and what filters are active.
 data class RecommendationContext(
     val userId: String = "",
     val surface: RecommendationSurface,
@@ -52,6 +61,8 @@ data class RecommendationContext(
     val recommendationProfile: RecommendationProfile = RecommendationProfile.empty(userId)
 )
 
+// Which screen is asking for ranked results - Home, Discover, Search, the map, or Following.
+// Each one has its own ranking priorities and its own rules for using location.
 enum class RecommendationSurface {
     FOR_YOU,
     DISCOVER,
@@ -60,6 +71,7 @@ enum class RecommendationSurface {
     FOLLOWING
 }
 
+// Which source LocationSourceResolver actually used to decide "where the user is" for a request.
 enum class ResolvedLocationSource {
     NONE,
     MANUAL_SELECTION,
@@ -70,6 +82,7 @@ enum class ResolvedLocationSource {
     FALLBACK_COUNTRY
 }
 
+// The location LocationSourceResolver settled on for a request, plus how strictly it should be applied.
 data class ResolvedLocation(
     val source: ResolvedLocationSource,
     val cityId: String = "",
@@ -79,11 +92,14 @@ data class ResolvedLocation(
     val useAsGooglePlacesBias: Boolean = false
 )
 
+// One named piece of an item's score - e.g. "Explicit style preference": +24.0.
 data class RecommendationScoreComponent(
     val label: String,
     val score: Double
 )
 
+// The full breakdown of why one item landed where it did - used for the "why" text and the
+// admin insights screen.
 data class RecommendationScoreExplanation(
     val itemId: String,
     val itemType: String,
@@ -101,6 +117,7 @@ data class RecommendationScoreExplanation(
     val reasons: List<String> = emptyList()
 )
 
+// Whether an item was ranked normally (EXPLOIT) or deliberately surfaced to mix things up (EXPLORE).
 enum class RecommendationSelectionMode {
     EXPLOIT,
     EXPLORE

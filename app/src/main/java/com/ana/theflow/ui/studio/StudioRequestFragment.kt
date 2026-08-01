@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -19,6 +20,7 @@ import com.ana.theflow.ui.common.UiText
 import com.ana.theflow.ui.settings.SettingsUi
 import com.ana.theflow.ui.settings.dp
 import com.ana.theflow.utilities.CityOptions
+import com.bumptech.glide.Glide
 
 // Lets any dancer request a brand-new studio business account or claim an existing one.
 // Both flows land in the same admin-reviewed queue - nothing here grants permission directly.
@@ -47,6 +49,9 @@ class StudioRequestFragment : Fragment() {
     private val claimStudioName: String get() = arguments?.getString(ARG_STUDIO_NAME).orEmpty()
     private val claimGooglePlaceId: String get() = arguments?.getString(ARG_GOOGLE_PLACE_ID).orEmpty()
     private val claimAddress: String get() = arguments?.getString(ARG_ADDRESS).orEmpty()
+    private val claimLatitude: Double? get() = arguments?.getDouble(ARG_LATITUDE, Double.NaN)?.takeIf { !it.isNaN() }
+    private val claimLongitude: Double? get() = arguments?.getDouble(ARG_LONGITUDE, Double.NaN)?.takeIf { !it.isNaN() }
+    private val claimCoverImageUrl: String get() = arguments?.getString(ARG_COVER_IMAGE_URL).orEmpty()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val title = if (isClaim) "Claim a studio" else "Create a studio"
@@ -73,37 +78,55 @@ class StudioRequestFragment : Fragment() {
         )
 
         if (isClaim) {
+            content.addView(sectionLabel("STUDIO"))
+            if (claimCoverImageUrl.isNotBlank()) content.addView(claimPhotoPreview(claimCoverImageUrl))
             content.addView(readOnlyRow("Studio", claimStudioName))
             if (claimAddress.isNotBlank()) content.addView(readOnlyRow("Address", claimAddress))
+            if (claimCoverImageUrl.isBlank() && claimAddress.isBlank()) {
+                content.addView(SettingsUi.message(requireContext(), "No extra details were found for this listing - you can still submit the claim with just the note below."))
+            }
         } else {
-            nameField = field("Studio name")
-            content.addView(nameField)
+            content.addView(sectionLabel("STUDIO DETAILS"))
+            nameField = field("e.g. Momentum Dance Studio")
             cityField = cityField()
-            content.addView(cityField)
-            addressField = field("Address")
-            content.addView(addressField)
-            bioField = field("Short bio", minHeightDp = 90, multiLine = true)
-            content.addView(bioField)
+            addressField = field("Street, city")
+            bioField = field("What makes your studio unique?", minHeightDp = 90, multiLine = true)
+            content.addView(card(
+                labeled("Studio name", nameField),
+                labeled("City", cityField),
+                labeled("Address", addressField),
+                labeled("Short bio", bioField)
+            ))
             content.addView(styleRow())
-            websiteField = field("Website (optional)")
-            content.addView(websiteField)
-            phoneField = field("Contact phone (optional)")
-            content.addView(phoneField)
-            emailField = field("Contact email (optional)")
-            content.addView(emailField)
+
+            content.addView(sectionLabel("CONTACT INFO (OPTIONAL)"))
+            websiteField = field("https://...")
+            phoneField = field("Phone number")
+            emailField = field("Email address")
+            content.addView(card(
+                labeled("Website", websiteField),
+                labeled("Contact phone", phoneField),
+                labeled("Contact email", emailField)
+            ))
         }
 
+        content.addView(sectionLabel("TELL US WHY"))
         justificationField = field(
-            if (isClaim) "Why is this studio yours?" else "Why are you requesting this studio?",
+            if (isClaim) "How do you know this studio is yours?" else "What's your connection to this studio?",
             minHeightDp = 90,
             multiLine = true
         )
-        content.addView(justificationField)
-
+        val whyCardFields = mutableListOf(
+            labeled(
+                if (isClaim) "Why is this studio yours?" else "Why are you requesting this studio?",
+                justificationField
+            )
+        )
         if (isClaim) {
-            verificationField = field("Verification details: phone, website, Instagram...", minHeightDp = 90, multiLine = true)
-            content.addView(verificationField)
+            verificationField = field("Phone, website, Instagram, or anything else that helps confirm this", minHeightDp = 90, multiLine = true)
+            whyCardFields.add(labeled("Verification details", verificationField))
         }
+        content.addView(card(*whyCardFields.toTypedArray()))
 
         messageLabel = SettingsUi.message(requireContext(), "")
         messageLabel.visibility = View.GONE
@@ -115,22 +138,65 @@ class StudioRequestFragment : Fragment() {
             setTextColor(context.getColor(R.color.flow_surface))
             setBackgroundResource(R.drawable.bg_flow_button_primary)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 52.dp()).apply {
-                topMargin = 8.dp()
+                topMargin = 18.dp()
             }
             setOnClickListener { submit() }
         }
         content.addView(submitButton)
 
-        content.addView(TextView(requireContext()).apply {
-            text = "Your requests"
-            setTextColor(context.getColor(R.color.flow_ink))
-            textSize = 16f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 20.dp(), 0, 6.dp())
-        })
+        content.addView(sectionLabel("YOUR REQUESTS"))
         pendingList = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
         content.addView(pendingList)
         loadMyRequests()
+    }
+
+    // Matches the bold, uppercase, letter-spaced section-label convention already used by the
+    // Professional Verification form ("YOUR DETAILS") - groups related fields under a heading
+    // instead of leaving them as one undifferentiated stack of inputs.
+    private fun sectionLabel(text: String): TextView {
+        return TextView(requireContext()).apply {
+            this.text = text
+            setTextColor(context.getColor(R.color.flow_text_muted))
+            textSize = 12f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            letterSpacing = 0.04f
+            setPadding(0, 20.dp(), 0, 8.dp())
+        }
+    }
+
+    // Groups a section's fields into one card (matching Professional Verification's "YOUR
+    // DETAILS" card), rather than each field floating as its own boxed input directly on the
+    // screen background.
+    private fun card(vararg children: View): LinearLayout {
+        return LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.bg_flow_card)
+            setPadding(16.dp(), 16.dp(), 16.dp(), 16.dp())
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            children.forEachIndexed { index, child ->
+                addView(child, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    if (index > 0) topMargin = 18.dp()
+                })
+            }
+        }
+    }
+
+    // A persistent bold label above the field, not just hint text (which disappears the moment
+    // someone starts typing) - the same pattern Professional Verification already uses for every
+    // one of its fields.
+    private fun labeled(label: String, input: View): View {
+        return LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(context).apply {
+                text = label
+                setTextColor(context.getColor(R.color.flow_ink))
+                textSize = 13f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = 6.dp()
+            })
+        }
     }
 
     private fun submit() {
@@ -142,6 +208,9 @@ class StudioRequestFragment : Fragment() {
                 studioName = claimStudioName,
                 googlePlaceId = claimGooglePlaceId,
                 address = claimAddress,
+                latitude = claimLatitude,
+                longitude = claimLongitude,
+                coverImageUrl = claimCoverImageUrl,
                 justification = justificationField.text.toString(),
                 verificationDetails = verificationField.text.toString(),
                 onSuccess = { onSubmitSuccess("Claim submitted for review.") },
@@ -212,6 +281,21 @@ class StudioRequestFragment : Fragment() {
             value = request.status.lowercase().replaceFirstChar { it.uppercase() },
             enabled = false
         )
+    }
+
+    // Shows the photo pulled in from the Google Places listing being claimed, so it's visibly
+    // obvious to the user (and to anyone verifying this flow) that real details were carried
+    // over automatically, not just silently attached to the request in the background.
+    private fun claimPhotoPreview(url: String): View {
+        val imageView = ImageView(requireContext())
+        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+        imageView.clipToOutline = true
+        imageView.setBackgroundResource(R.drawable.bg_flow_input)
+        imageView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 140.dp()).apply {
+            bottomMargin = 10.dp()
+        }
+        Glide.with(imageView).load(url).centerCrop().into(imageView)
+        return imageView
     }
 
     private fun readOnlyRow(label: String, value: String): View {
@@ -318,6 +402,9 @@ class StudioRequestFragment : Fragment() {
         private const val ARG_STUDIO_NAME = "ARG_STUDIO_NAME"
         private const val ARG_GOOGLE_PLACE_ID = "ARG_GOOGLE_PLACE_ID"
         private const val ARG_ADDRESS = "ARG_ADDRESS"
+        private const val ARG_LATITUDE = "ARG_LATITUDE"
+        private const val ARG_LONGITUDE = "ARG_LONGITUDE"
+        private const val ARG_COVER_IMAGE_URL = "ARG_COVER_IMAGE_URL"
         const val MODE_CREATE = "create"
         const val MODE_CLAIM = "claim"
 
@@ -328,7 +415,10 @@ class StudioRequestFragment : Fragment() {
             studioId: String = "",
             studioName: String = "",
             googlePlaceId: String = "",
-            address: String = ""
+            address: String = "",
+            latitude: Double? = null,
+            longitude: Double? = null,
+            coverImageUrl: String = ""
         ): StudioRequestFragment {
             return StudioRequestFragment().apply {
                 arguments = Bundle().apply {
@@ -337,6 +427,9 @@ class StudioRequestFragment : Fragment() {
                     putString(ARG_STUDIO_NAME, studioName)
                     putString(ARG_GOOGLE_PLACE_ID, googlePlaceId)
                     putString(ARG_ADDRESS, address)
+                    if (latitude != null) putDouble(ARG_LATITUDE, latitude)
+                    if (longitude != null) putDouble(ARG_LONGITUDE, longitude)
+                    putString(ARG_COVER_IMAGE_URL, coverImageUrl)
                 }
             }
         }

@@ -1,3 +1,6 @@
+// A lightweight fallback ranker for feed posts, used when a user's full recommendation profile
+// isn't available yet (e.g. it failed to load) so the feed still shows something reasonable
+// instead of an unranked list.
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.model.discovery.DiscoveryItem
@@ -6,25 +9,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-data class RecommendationResult(
-    val item: DiscoveryItem,
-    val score: Int,
-    val reasons: List<String>,
-    val candidateReason: String
-)
-
-data class RecommendationCandidate(
-    val item: DiscoveryItem,
-    val candidateReason: String
-)
-
+// A simplified stand-in for a user's real recommendation profile - only this fallback ranker uses it.
 data class PostRecommendationProfile(
     val targetTypeScores: Map<String, Int> = emptyMap()
 )
 
 object RecommendationEngine {
 
-    // Sorts posts by recommendation score.
+    // Sorts posts by a simple engagement score, then spreads things out so the same author or
+    // post type doesn't end up clumped together.
     fun rankPosts(
         posts: List<Post>,
         profile: PostRecommendationProfile
@@ -38,6 +31,8 @@ object RecommendationEngine {
         ))
     }
 
+    // A basic score from likes/comments, plus a bonus for upcoming dance activities (and a
+    // penalty if the activity's already happened), plus a small bump for having media attached.
     private fun postRecommendationScore(post: Post, profile: PostRecommendationProfile): Int {
         var score = profile.targetTypeScores[scoreKey(post.authorType)] ?: 0
         score += post.likesCount.toInt().coerceAtMost(40)
@@ -52,6 +47,7 @@ object RecommendationEngine {
         return score
     }
 
+    // Reshuffles a sorted list so you don't get two posts in a row from the same author or of the same type.
     private fun diversifyPosts(posts: List<Post>): List<Post> {
         val remaining = posts.toMutableList()
         val result = mutableListOf<Post>()
@@ -66,6 +62,7 @@ object RecommendationEngine {
         return result
     }
 
+    // True if this is a dance activity post and its date has already passed.
     private fun isPastEvent(post: Post): Boolean {
         if (post.postType != POST_TYPE_DANCE_ACTIVITY || post.activityDate.isBlank()) return false
         val parsed = listOf("yyyy-MM-dd", "dd/MM/yyyy", "MMM d, yyyy").firstNotNullOfOrNull { pattern ->
@@ -74,202 +71,7 @@ object RecommendationEngine {
         return parsed.before(Date(System.currentTimeMillis() - 24L * 60L * 60L * 1000L))
     }
 
-    // Calculates a recommendation score for one item.
-    fun calculate(
-        items: List<DiscoveryItem>,
-        preferredStyles: Set<String>,
-        preferredLevel: String,
-        preferredLocation: String,
-        savedItemIds: Set<String>,
-        styleScores: Map<String, Int>,
-        studioScores: Map<String, Int>,
-        teacherScores: Map<String, Int>
-    ): List<RecommendationResult> {
-        return rankCandidates(
-            candidates = generateCandidates(
-                items = items,
-                preferredStyles = preferredStyles,
-                preferredLevel = preferredLevel,
-                preferredLocation = preferredLocation,
-                savedItemIds = savedItemIds,
-                styleScores = styleScores,
-                studioScores = studioScores,
-                teacherScores = teacherScores
-            ),
-            preferredStyles = preferredStyles,
-            preferredLevel = preferredLevel,
-            preferredLocation = preferredLocation,
-            savedItemIds = savedItemIds,
-            styleScores = styleScores,
-            studioScores = studioScores,
-            teacherScores = teacherScores
-        )
-    }
-
-    // Builds recommendation candidates from discovery items.
-    fun generateCandidates(
-        items: List<DiscoveryItem>,
-        preferredStyles: Set<String>,
-        preferredLevel: String,
-        preferredLocation: String,
-        savedItemIds: Set<String>,
-        styleScores: Map<String, Int>,
-        studioScores: Map<String, Int>,
-        teacherScores: Map<String, Int>
-    ): List<RecommendationCandidate> {
-        return items.mapNotNull { item ->
-            val candidateReason = candidateReasonFor(
-                item = item,
-                preferredStyles = preferredStyles,
-                preferredLevel = preferredLevel,
-                preferredLocation = preferredLocation,
-                savedItemIds = savedItemIds,
-                styleScores = styleScores,
-                studioScores = studioScores,
-                teacherScores = teacherScores
-            ) ?: return@mapNotNull null
-
-            RecommendationCandidate(item = item, candidateReason = candidateReason)
-        }
-    }
-
-    // Ranks discovery candidates and explains the score.
-    fun rankCandidates(
-        candidates: List<RecommendationCandidate>,
-        preferredStyles: Set<String>,
-        preferredLevel: String,
-        preferredLocation: String,
-        savedItemIds: Set<String>,
-        styleScores: Map<String, Int>,
-        studioScores: Map<String, Int>,
-        teacherScores: Map<String, Int>
-    ): List<RecommendationResult> {
-        return candidates
-            .map { candidate ->
-                val item = candidate.item
-                val reasons = mutableListOf<String>()
-                var score = 0
-
-                score += addPreferredStyleScore(item, preferredStyles, reasons)
-                score += addPreferredLevelScore(item, preferredLevel, reasons)
-                score += addPreferredLocationScore(item, preferredLocation, reasons)
-                score += addSavedItemScore(item, savedItemIds, reasons)
-                score += addBehaviorScore(
-                    label = item.style,
-                    score = styleScores[item.style] ?: 0,
-                    reason = "Because you viewed or opened ${item.style} classes",
-                    reasons = reasons
-                )
-                score += addBehaviorScore(
-                    label = item.studio,
-                    score = studioScores[item.studio] ?: 0,
-                    reason = "Because you saved or viewed ${item.studio}",
-                    reasons = reasons
-                )
-                score += addBehaviorScore(
-                    label = item.teacher,
-                    score = teacherScores[item.teacher] ?: 0,
-                    reason = "Because you showed interest in ${item.teacher}",
-                    reasons = reasons
-                )
-
-                RecommendationResult(
-                    item = item,
-                    score = score,
-                    reasons = reasons.ifEmpty { listOf(candidate.candidateReason) },
-                    candidateReason = candidate.candidateReason
-                )
-            }
-            .sortedByDescending { it.score }
-    }
-
-    // Chooses the reason an item is a recommendation candidate.
-    private fun candidateReasonFor(
-        item: DiscoveryItem,
-        preferredStyles: Set<String>,
-        preferredLevel: String,
-        preferredLocation: String,
-        savedItemIds: Set<String>,
-        styleScores: Map<String, Int>,
-        studioScores: Map<String, Int>,
-        teacherScores: Map<String, Int>
-    ): String? {
-        return when {
-            preferredStyles.any { it.equals(item.style, ignoreCase = true) } ->
-                "Candidate because it matches your preferred style: ${item.style}"
-            preferredLocation.isNotBlank() && item.location.equals(preferredLocation, ignoreCase = true) ->
-                "Candidate because it is near $preferredLocation"
-            preferredLevel.isNotBlank() && item.level.equals(preferredLevel, ignoreCase = true) ->
-                "Candidate because it matches your preferred level: ${item.level}"
-            savedItemIds.contains(item.id) ->
-                "Candidate because you saved this item"
-            (styleScores[item.style] ?: 0) > 0 ->
-                "Candidate because of your ${item.style} activity"
-            (studioScores[item.studio] ?: 0) > 0 ->
-                "Candidate because of your ${item.studio} activity"
-            (teacherScores[item.teacher] ?: 0) > 0 ->
-                "Candidate because of your interest in ${item.teacher}"
-            else -> null
-        }
-    }
-
-    // Adds score for matching preferred styles.
-    private fun addPreferredStyleScore(
-        item: DiscoveryItem,
-        preferredStyles: Set<String>,
-        reasons: MutableList<String>
-    ): Int {
-        if (!preferredStyles.any { it.equals(item.style, ignoreCase = true) }) return 0
-        reasons.add("Matches your preferred style: ${item.style}")
-        return 4
-    }
-
-    // Adds score for matching the preferred level.
-    private fun addPreferredLevelScore(
-        item: DiscoveryItem,
-        preferredLevel: String,
-        reasons: MutableList<String>
-    ): Int {
-        if (preferredLevel.isBlank() || !item.level.equals(preferredLevel, ignoreCase = true)) return 0
-        reasons.add("Fits your preferred level: ${item.level}")
-        return 2
-    }
-
-    // Adds score for matching the preferred location.
-    private fun addPreferredLocationScore(
-        item: DiscoveryItem,
-        preferredLocation: String,
-        reasons: MutableList<String>
-    ): Int {
-        if (preferredLocation.isBlank() || !item.location.equals(preferredLocation, ignoreCase = true)) return 0
-        reasons.add("Popular near $preferredLocation")
-        return 3
-    }
-
-    // Adds score for saved items.
-    private fun addSavedItemScore(
-        item: DiscoveryItem,
-        savedItemIds: Set<String>,
-        reasons: MutableList<String>
-    ): Int {
-        if (!savedItemIds.contains(item.id)) return 0
-        reasons.add("You saved this item")
-        return 5
-    }
-
-    // Adds score from past user behavior.
-    private fun addBehaviorScore(
-        label: String,
-        score: Int,
-        reason: String,
-        reasons: MutableList<String>
-    ): Int {
-        if (label.isBlank() || score <= 0) return 0
-        reasons.add(reason)
-        return score
-    }
-
-    // Converts text into a safe recommendation score key.
+    // Turns free text into a safe key - just letters, numbers, dashes, and underscores. Falls back to "unknown" if blank.
     fun scoreKey(value: String): String {
         return value.trim()
             .ifBlank { "unknown" }

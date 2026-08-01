@@ -3,11 +3,14 @@ package com.ana.theflow.ui.common
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
 import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
@@ -71,7 +74,10 @@ object PostCardRenderer {
         // Routes the post's own header tap by account type (user vs. studio). Falls back to
         // onAuthorOpen(post.authorId) when not supplied, so existing callers keep working.
         onAuthorEntityOpen: ((AuthorRef) -> Unit)? = null,
-        cardStyle: CardStyle = CardStyle.DARK
+        cardStyle: CardStyle = CardStyle.DARK,
+        // Small "Hosting" / "Registered" style chip shown on the event cover, used by screens that
+        // merge otherwise-separate lists (e.g. Events > My Events) into one feed.
+        eventBadge: String? = null
     ) {
         val context = parent.context
         val card = LinearLayout(context).apply {
@@ -99,7 +105,7 @@ object PostCardRenderer {
             addRepostAttribution(card, post, cardStyle)
         }
         if (post.postType == POST_TYPE_DANCE_ACTIVITY) {
-            addEventContent(card, post, isEventRegistered, onEventRegister, onOpen, onMediaOpen, cardStyle)
+            addEventContent(card, post, isEventRegistered, onEventRegister, onOpen, onMediaOpen, cardStyle, eventBadge)
         } else if (post.postType == POST_TYPE_REPOST && post.activityType.isNotBlank()) {
             addBodyText(card, post.text, cardStyle)
             addSharedEventContent(card, post, onOpen, cardStyle)
@@ -114,6 +120,8 @@ object PostCardRenderer {
         parent.addView(card)
     }
 
+    // A standalone comments card (used by the post detail screen) - just a title and the same
+    // inline comments section used inline on feed cards.
     fun addCommentThread(
         parent: LinearLayout,
         post: Post,
@@ -160,6 +168,8 @@ object PostCardRenderer {
         })
     }
 
+    // Avatar, author name, "business account / dancer · timestamp" line, and the options
+    // (report/hide/edit/delete) button.
     private fun addHeader(
         card: LinearLayout,
         post: Post,
@@ -248,6 +258,8 @@ object PostCardRenderer {
         card.addView(row)
     }
 
+    // Adds the post's text, truncated with a "Read more" link past LONG_TEXT_THRESHOLD characters
+    // so one long post doesn't push everything else off the visible feed.
     private fun addBodyText(card: LinearLayout, textValue: String, cardStyle: CardStyle) {
         if (textValue.isBlank()) return
         val context = card.context
@@ -279,11 +291,14 @@ object PostCardRenderer {
         })
     }
 
+    // Adds the post's first visible media item, if it has one.
     private fun addPostMedia(card: LinearLayout, post: Post, onMediaOpen: ((String, String) -> Unit)?, cardStyle: CardStyle) {
         val firstMedia = firstVisibleMedia(post) ?: return
         card.addView(mediaFrame(card, firstMedia.first, firstMedia.second, onMediaOpen, cardStyle))
     }
 
+    // The full dance-activity layout: poster cover, organizer line, registration count,
+    // description, and the View Details / Register buttons.
     private fun addEventContent(
         card: LinearLayout,
         post: Post,
@@ -291,48 +306,25 @@ object PostCardRenderer {
         onEventRegister: ((Post) -> Unit)?,
         onOpen: ((Post) -> Unit)?,
         onMediaOpen: ((String, String) -> Unit)?,
-        cardStyle: CardStyle
+        cardStyle: CardStyle,
+        eventBadge: String? = null
     ) {
         val context = card.context
         val firstMedia = firstVisibleMedia(post)
-        if (firstMedia != null) {
-            card.addView(mediaFrame(card, firstMedia.first, firstMedia.second, onMediaOpen, cardStyle))
-        }
+        card.addView(eventCoverFrame(card, post, firstMedia, onMediaOpen, cardStyle, eventBadge))
 
         card.addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(eventBackground(cardStyle))
-            setPadding(12.dp(), 12.dp(), 12.dp(), 12.dp())
+            setPadding(2.dp(), 10.dp(), 2.dp(), 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = if (firstMedia == null) 12.dp() else 10.dp()
-            }
-
-            addView(TextView(context).apply {
-                text = post.activityType.ifBlank { context.getString(R.string.post_event_title) }
-                setTextColor(context.getColor(primaryTextColor(cardStyle)))
-                textSize = 18f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            })
-
-            addView(TextView(context).apply {
-                text = listOf(
-                    post.activityDate,
-                    post.activityTime,
-                    post.activityLocation
-                ).filter { it.isNotBlank() }.joinToString(" / ")
-                setTextColor(context.getColor(secondaryTextColor(cardStyle)))
-                textSize = 13f
-                setPadding(0, 6.dp(), 0, 0)
-            })
+            )
 
             addView(TextView(context).apply {
                 text = post.authorRef().name.takeIf { it.isNotBlank() }?.let { "Organized by $it" }.orEmpty()
                 setTextColor(context.getColor(secondaryTextColor(cardStyle)))
                 textSize = 13f
-                setPadding(0, 5.dp(), 0, 0)
                 visibility = if (text.isBlank()) View.GONE else View.VISIBLE
             })
 
@@ -340,7 +332,7 @@ object PostCardRenderer {
                 text = eventCapacityLine(post)
                 setTextColor(context.getColor(secondaryTextColor(cardStyle)))
                 textSize = 13f
-                setPadding(0, 6.dp(), 0, 0)
+                setPadding(0, 4.dp(), 0, 0)
                 visibility = if (text.isBlank()) View.GONE else View.VISIBLE
             })
 
@@ -374,6 +366,137 @@ object PostCardRenderer {
         })
     }
 
+    // Builds the poster-style cover: the real photo (or a style-derived gradient placeholder so
+    // the card never looks empty) with the title/date/location layered over a bottom scrim, like a
+    // real event poster rather than a plain data box underneath a picture.
+    private fun eventCoverFrame(
+        card: LinearLayout,
+        post: Post,
+        firstMedia: Pair<String, String>?,
+        onMediaOpen: ((String, String) -> Unit)?,
+        cardStyle: CardStyle,
+        eventBadge: String?
+    ): View {
+        val context = card.context
+        val hasPhoto = firstMedia != null && (firstMedia.second == MEDIA_TYPE_PHOTO || firstMedia.second == MEDIA_TYPE_MEDIA)
+        return FrameLayout(context).apply {
+            setBackgroundResource(mediaBackground(cardStyle))
+            clipToOutline = true
+            isClickable = firstMedia != null
+            isFocusable = firstMedia != null
+            if (firstMedia != null) {
+                setOnClickListener {
+                    subtleTap(this)
+                    onMediaOpen?.invoke(firstMedia.first, firstMedia.second)
+                }
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                EVENT_COVER_HEIGHT.dp()
+            ).apply { topMargin = 12.dp() }
+
+            addView(ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                if (hasPhoto) {
+                    Glide.with(context).load(firstMedia!!.first).centerCrop().into(this)
+                } else {
+                    setBackgroundResource(eventPlaceholderDrawable(post))
+                }
+            })
+
+            if (!hasPhoto) {
+                addView(ImageView(context).apply {
+                    setImageResource(R.drawable.ic_event_24)
+                    setColorFilter(Color.argb(70, 255, 255, 255))
+                    layoutParams = FrameLayout.LayoutParams(64.dp(), 64.dp(), Gravity.CENTER).apply {
+                        bottomMargin = 26.dp()
+                    }
+                })
+            }
+
+            addView(View(context).apply {
+                setBackgroundResource(R.drawable.bg_event_cover_scrim)
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, 118.dp(), Gravity.BOTTOM)
+            })
+
+            if (!eventBadge.isNullOrBlank()) {
+                addView(TextView(context).apply {
+                    text = eventBadge
+                    setTextColor(context.getColor(R.color.white))
+                    textSize = 11f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setBackgroundResource(R.drawable.bg_event_badge)
+                    setPadding(10.dp(), 4.dp(), 10.dp(), 4.dp())
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP or Gravity.START
+                    ).apply {
+                        topMargin = 10.dp()
+                        leftMargin = 10.dp()
+                    }
+                })
+            }
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM
+                ).apply {
+                    leftMargin = 14.dp()
+                    rightMargin = 14.dp()
+                    bottomMargin = 12.dp()
+                }
+
+                addView(TextView(context).apply {
+                    text = post.activityType.ifBlank { context.getString(R.string.post_event_title) }
+                    setTextColor(context.getColor(R.color.white))
+                    textSize = 19f
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                })
+
+                val subtitle = listOf(post.activityDate, post.activityTime, post.activityLocation)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" / ")
+                if (subtitle.isNotBlank()) {
+                    addView(TextView(context).apply {
+                        text = subtitle
+                        setTextColor(Color.argb(230, 255, 255, 255))
+                        textSize = 13f
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, 4.dp(), 0, 0)
+                    })
+                }
+            })
+        }
+    }
+
+    // Demo/legacy events rarely carry a cover photo. Rather than an empty box, pick a tasteful
+    // gradient deterministically from the event's dance style (folded into activityDescription by
+    // the composer as "Dance style: X") so the same event always gets the same look.
+    private fun eventPlaceholderDrawable(post: Post): Int {
+        val options = listOf(
+            R.drawable.bg_event_cover_placeholder_1,
+            R.drawable.bg_event_cover_placeholder_2,
+            R.drawable.bg_event_cover_placeholder_3,
+            R.drawable.bg_event_cover_placeholder_4,
+            R.drawable.bg_event_cover_placeholder_5
+        )
+        val key = danceStyleOf(post) ?: post.activityType.ifBlank { post.postId }
+        val index = kotlin.math.abs(key.hashCode()) % options.size
+        return options[index]
+    }
+
+    private fun danceStyleOf(post: Post): String? {
+        return Regex("Dance style: (.+)").find(post.activityDescription)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+    }
+
     private fun LinearLayout.eventButton(
         textValue: String,
         primary: Boolean,
@@ -403,6 +526,8 @@ object PostCardRenderer {
         }
     }
 
+    // The compact event summary panel shown inside a repost of a dance activity - just the key
+    // facts and a View Details button, not the full poster layout addEventContent uses.
     private fun addSharedEventContent(
         card: LinearLayout,
         post: Post,
@@ -470,6 +595,8 @@ object PostCardRenderer {
         })
     }
 
+    // A single tappable media preview - shows the image directly, or a dimmed frame with a play
+    // icon overlay for anything that isn't a plain photo.
     private fun mediaFrame(
         card: LinearLayout,
         url: String,
@@ -522,6 +649,8 @@ object PostCardRenderer {
         }
     }
 
+    // Adds a short list of collaboration-specific fields (style/location/deadline/compensation),
+    // skipping any that weren't filled in.
     private fun addCollaborationDetails(card: LinearLayout, post: Post, cardStyle: CardStyle) {
         val context = card.context
         val details = listOfNotNull(
@@ -540,6 +669,7 @@ object PostCardRenderer {
         })
     }
 
+    // The like/comment/save/repost/share icon row under every post.
     private fun addActionRow(
         card: LinearLayout,
         post: Post,
@@ -563,16 +693,16 @@ object PostCardRenderer {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 12.dp(), 0, 0)
+            setPadding(0, 6.dp(), 0, 0)
         }
 
-        row.addView(iconAction(card, R.drawable.ic_heart_24, context.getString(R.string.post_like), isLiked, likeColor(cardStyle), cardStyle) {
+        row.addView(iconAction(card, R.drawable.ic_heart_24, context.getString(R.string.post_like), isLiked, likeColor(cardStyle), cardStyle, hapticOnTap = true, burstIfActivating = true) {
             onLike?.invoke(post)
         })
         row.addView(iconAction(card, R.drawable.ic_comment_24, context.getString(R.string.post_comment), false, brandColor(cardStyle), cardStyle) {
             focusInlineCommentInput(card)
         })
-        row.addView(iconAction(card, R.drawable.ic_bookmark_24, context.getString(R.string.post_save), isSaved, brandColor(cardStyle), cardStyle) {
+        row.addView(iconAction(card, R.drawable.ic_bookmark_24, context.getString(R.string.post_save), isSaved, brandColor(cardStyle), cardStyle, hapticOnTap = true) {
             if (onSave == null) {
                 Toast.makeText(context, R.string.post_save_unavailable, Toast.LENGTH_SHORT).show()
             } else {
@@ -597,6 +727,8 @@ object PostCardRenderer {
         card.addView(row)
     }
 
+    // One icon button in the action row, with an optional haptic tap and a bouncier "burst"
+    // animation when it's the one turning an inactive state active (used for the like button).
     private fun iconAction(
         card: LinearLayout,
         iconRes: Int,
@@ -604,6 +736,8 @@ object PostCardRenderer {
         active: Boolean,
         activeColorRes: Int = R.color.neon_pink,
         cardStyle: CardStyle,
+        hapticOnTap: Boolean = false,
+        burstIfActivating: Boolean = false,
         onClick: () -> Unit
     ): ImageButton {
         val context = card.context
@@ -612,17 +746,29 @@ object PostCardRenderer {
             setImageResource(iconRes)
             setColorFilter(context.getColor(if (active) activeColorRes else secondaryTextColor(cardStyle)))
             setBackgroundResource(iconButtonBackground(cardStyle))
-            scaleType = ImageView.ScaleType.CENTER
-            layoutParams = LinearLayout.LayoutParams(44.dp(), 44.dp()).apply {
-                rightMargin = 4.dp()
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            val iconInset = 7.dp()
+            setPadding(iconInset, iconInset, iconInset, iconInset)
+            alpha = if (active) 1f else 0.72f
+            layoutParams = LinearLayout.LayoutParams(34.dp(), 34.dp()).apply {
+                rightMargin = 10.dp()
             }
             setOnClickListener {
-                subtleTap(this)
+                if (hapticOnTap) {
+                    performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                }
+                if (burstIfActivating && !active) {
+                    likeBurstAnimation(this)
+                } else {
+                    subtleTap(this)
+                }
                 onClick()
             }
         }
     }
 
+    // The likes count line, the "view N comments" line, and the inline comments section below the
+    // action row.
     private fun addEngagementFooter(
         card: LinearLayout,
         post: Post,
@@ -665,6 +811,8 @@ object PostCardRenderer {
         addInlineCommentsSection(card, post, comments, currentUserId, onComment, onEditComment, onDeleteComment, onLikeComment, onReplyComment, onReportComment, onAuthorOpen, cardStyle)
     }
 
+    // The comment preview list (up to COMMENTS_PREVIEW_LIMIT, plus a "view all" link past that)
+    // and the comment composer with its reply-context row underneath it.
     private fun addInlineCommentsSection(
         card: LinearLayout,
         post: Post,
@@ -1108,6 +1256,7 @@ object PostCardRenderer {
             .show()
     }
 
+    // Popup menu for the post's "..." button - hide/report for anyone, edit/delete for the owner.
     private fun showPostOptions(
         anchor: View,
         post: Post,
@@ -1149,6 +1298,7 @@ object PostCardRenderer {
         }
     }
 
+    // Hands the post's text off to the system share sheet and logs the share as an activity signal.
     private fun sharePost(post: Post, card: LinearLayout) {
         val context = card.context
         val text = listOf(post.authorName, post.text.ifBlank { post.activityDescription })
@@ -1167,6 +1317,8 @@ object PostCardRenderer {
         return value.ifBlank { null }?.let { "$label: $it" }
     }
 
+    // Builds the "N / capacity registered · N waitlisted" line, adapting to whichever of those
+    // numbers the event actually has.
     private fun eventCapacityLine(post: Post): String {
         val registered = post.registrationsCount
         val waitlist = post.waitlistCount
@@ -1192,10 +1344,15 @@ object PostCardRenderer {
         return post.activityCapacity > 0 && post.registrationsCount >= post.activityCapacity
     }
 
+    // Tapping "view all comments" on a feed card just surfaces a toast for now rather than
+    // navigating anywhere - the full thread is reachable from the post detail screen itself.
     private fun onOpenCommentThread(card: LinearLayout, post: Post) {
         Toast.makeText(card.context, card.context.getString(R.string.post_comments_title), Toast.LENGTH_SHORT).show()
     }
 
+    // Picks the first media item to show on the card - prefers the newer mediaItems list (which
+    // can hide specific items from the feed) and falls back to the older flat mediaUrls field for
+    // posts written before that list existed.
     private fun firstVisibleMedia(post: Post): Pair<String, String>? {
         val item = post.mediaItems.firstOrNull { it.visibleInMedia && it.url.isNotBlank() }
         if (item != null) return item.url to item.mediaType
@@ -1203,12 +1360,15 @@ object PostCardRenderer {
         return legacyUrl to post.mediaType.ifBlank { MEDIA_TYPE_PHOTO }
     }
 
+    // A plain date/time string for the post header.
     private fun formatTimestamp(post: Post): String {
         val createdAt = post.createdAt ?: return "just now"
         return SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
             .format(Date(createdAt.seconds * 1000))
     }
 
+    // A relative age string for comments ("now", "5m", "3h", "2d"), falling back to a plain date
+    // once a comment is more than a week old.
     private fun formatCommentTimestamp(comment: PostComment): String {
         val createdAt = comment.createdAt ?: return "now"
         val ageSeconds = ((System.currentTimeMillis() / 1000L) - createdAt.seconds).coerceAtLeast(0)
@@ -1233,6 +1393,28 @@ object PostCardRenderer {
                     .scaleY(1f)
                     .alpha(1f)
                     .setDuration(90)
+                    .start()
+            }
+            .start()
+    }
+
+    // A distinct, more satisfying "like" moment - pops past full size with an overshoot bounce
+    // instead of the generic press-in every other action uses, so liking a post actually feels
+    // different from saving/reposting/sharing it.
+    private fun likeBurstAnimation(view: View) {
+        view.animate().cancel()
+        view.scaleX = 1f
+        view.scaleY = 1f
+        view.animate()
+            .scaleX(1.5f)
+            .scaleY(1.5f)
+            .setDuration(180)
+            .setInterpolator(OvershootInterpolator(3f))
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(150)
                     .start()
             }
             .start()
@@ -1284,10 +1466,16 @@ object PostCardRenderer {
     private const val MEDIA_TYPE_PHOTO = "photo"
     private const val MEDIA_TYPE_MEDIA = "media"
     private const val LONG_TEXT_THRESHOLD = 180
+    private const val EVENT_COVER_HEIGHT = 188
     private const val INLINE_COMMENT_INPUT_TAG = "post_inline_comment_input"
     private const val INLINE_REPLY_CONTEXT_TAG = "post_inline_reply_context"
     private const val INLINE_REPLY_LABEL_TAG = "post_inline_reply_label"
-    private const val COMMENTS_PREVIEW_LIMIT = 3
+    // Not private: PostRepository.loadComments' feed/list callers (Home, Profile's own-posts
+    // list) fetch exactly this many comments per post instead of the fuller detail-screen limit,
+    // since a feed card never displays more than this anyway - see loadComments' commentLimit
+    // param. Keeping it here (not duplicating the number in PostRepository) means the fetched
+    // count and the displayed count can't drift apart again.
+    const val COMMENTS_PREVIEW_LIMIT = 3
     private const val REPLIES_PREVIEW_LIMIT = 2
 }
 

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="20dp">
+
+    <TextView
+        android:id="@+id/discoverMAPLBLTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Explore Near You"
+        android:textColor="@color/discover_ink"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/discoverMAPLAYMap"
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_discover_map"
+        android:padding="2dp"
+        android:visibility="gone">
+
+        <com.google.android.gms.maps.MapView
+            android:id="@+id/discoverMAPViewMap"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <Button
+            android:id="@+id/discoverMAPBTNSearchArea"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:background="@drawable/bg_discover_segment_active"
+            android:minWidth="0dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="Open Map"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/discoverMAPLBLAttribution"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="@string/discover_google_attribution"
+        android:textColor="@color/discover_text_muted"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
+</LinearLayout>

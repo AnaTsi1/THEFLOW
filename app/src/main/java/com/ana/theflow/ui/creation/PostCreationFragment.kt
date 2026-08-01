@@ -34,22 +34,19 @@ class PostCreationFragment : BaseCreationFragment() {
         postText = field("What's flowing today?", minHeightDp = 180, multiLine = true)
         parent.addView(postText)
 
-        parent.addView(sectionTitle("Add to your post"))
+        // Only genuinely useful add-ons: media, and the two tags that actually feed
+        // Discover/recommendations (location and dance style). No mood/tagging/music
+        // gimmicks that don't do anything beyond decorating the caption text.
         parent.addView(LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 14.dp(), 0, 0)
             addView(optionButton("Photo") { openMediaPicker() })
             addView(optionButton("Video") { openMediaPicker() })
+        })
+        parent.addView(LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
             addView(optionButton("Location") { editDetail("Location") })
-        })
-        parent.addView(LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.HORIZONTAL
             addView(optionButton("Dance style") { editDetail("Dance style") })
-            addView(optionButton("Tag people") { editDetail("With") })
-        })
-        parent.addView(LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(optionButton("Music") { editDetail("Music") })
-            addView(optionButton("Feeling / activity") { editDetail("Feeling") })
         })
 
         selectedDetails = LinearLayout(requireContext()).apply {
@@ -63,10 +60,7 @@ class PostCreationFragment : BaseCreationFragment() {
         val body = postText.text.toString().trim()
         val details = joinedDetails(
             "Location" to postDetails["Location"].orEmpty(),
-            "Dance style" to postDetails["Dance style"].orEmpty(),
-            "With" to postDetails["With"].orEmpty(),
-            "Music" to postDetails["Music"].orEmpty(),
-            "Feeling" to postDetails["Feeling"].orEmpty()
+            "Dance style" to postDetails["Dance style"].orEmpty()
         )
         val text = listOf(body, details).filter { it.isNotBlank() }.joinToString("\n\n")
         if (text.isBlank() && mediaType() == MEDIA_TYPE_NONE) {
@@ -102,10 +96,6 @@ class PostCreationFragment : BaseCreationFragment() {
     private fun editDetail(label: String) {
         if (label == "Dance style") {
             showChoiceDetail(label, listOf("Hip Hop", "Heels", "Salsa", "Contemporary", "Afro", "Ballet", "Jazz", "Bachata"))
-            return
-        }
-        if (label == "Feeling") {
-            showChoiceDetail(label, listOf("Practicing", "Teaching", "Rehearsing", "Performing", "Looking for feedback", "Celebrating"))
             return
         }
         val input = field(label).apply {

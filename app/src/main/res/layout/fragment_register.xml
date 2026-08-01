@@ -3,74 +3,179 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/flow_background"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingBottom="28dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_flow_card"
-            android:gravity="center"
+            android:background="@drawable/bg_register_hero"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:paddingStart="28dp"
+            android:paddingTop="40dp"
+            android:paddingEnd="28dp"
+            android:paddingBottom="48dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.12"
+                android:text="THE FLOW"
+                android:textColor="@color/flow_lilac_soft"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Join the flow."
+                android:textColor="@color/white"
+                android:textSize="32sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:lineSpacingExtra="3dp"
+                android:text="Find your people, your studio, and your next class. Dancers, teachers, and studios - all in one place."
+                android:textColor="@color/flow_lilac_soft"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="-26dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/bg_flow_card"
+            android:elevation="6dp"
+            android:orientation="vertical"
+            android:padding="20dp">
 
             <TextView
                 android:id="@+id/register_LBL_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="Create Account"
+                android:text="Create your account"
                 android:textColor="@color/flow_ink"
-                android:textSize="28sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
-            <EditText
-                android:id="@+id/register_EDT_firstName"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="20dp"
-                android:background="@drawable/bg_flow_input"
-                android:hint="First name"
-                android:inputType="textPersonName"
-                android:textColor="@color/flow_ink"
-                android:textColorHint="@color/flow_text_muted" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:orientation="horizontal">
 
-            <EditText
-                android:id="@+id/register_EDT_lastName"
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="First name"
+                        android:textColor="@color/flow_ink"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <EditText
+                        android:id="@+id/register_EDT_firstName"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:layout_marginTop="6dp"
+                        android:background="@drawable/bg_flow_input"
+                        android:hint="Maya"
+                        android:inputType="textPersonName"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:textColor="@color/flow_ink"
+                        android:textColorHint="@color/flow_text_muted" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Last name"
+                        android:textColor="@color/flow_ink"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <EditText
+                        android:id="@+id/register_EDT_lastName"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:layout_marginTop="6dp"
+                        android:background="@drawable/bg_flow_input"
+                        android:hint="Cohen"
+                        android:inputType="textPersonName"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:textColor="@color/flow_ink"
+                        android:textColorHint="@color/flow_text_muted" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
                 android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_flow_input"
-                android:hint="Last name"
-                android:inputType="textPersonName"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Email"
                 android:textColor="@color/flow_ink"
-                android:textColorHint="@color/flow_text_muted" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/register_EDT_email"
                 android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="12dp"
+                android:layout_height="50dp"
+                android:layout_marginTop="6dp"
                 android:background="@drawable/bg_flow_input"
-                android:hint="Email"
+                android:hint="you@example.com"
                 android:inputType="textEmailAddress"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:textColor="@color/flow_ink"
                 android:textColorHint="@color/flow_text_muted" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Password"
+                android:textColor="@color/flow_ink"
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/register_EDT_password"
                 android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="12dp"
+                android:layout_height="50dp"
+                android:layout_marginTop="6dp"
                 android:background="@drawable/bg_flow_input"
-                android:hint="Password"
+                android:hint="At least 6 characters"
                 android:inputType="textPassword"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:textColor="@color/flow_ink"
                 android:textColorHint="@color/flow_text_muted" />
 
@@ -78,36 +183,42 @@
                 android:id="@+id/register_LBL_message"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="14dp"
                 android:gravity="center"
                 android:textColor="@color/flow_error"
+                android:textSize="13sp"
                 android:visibility="gone" />
 
             <ProgressBar
                 android:id="@+id/register_progress"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="14dp"
                 android:visibility="gone" />
 
             <Button
                 android:id="@+id/register_BTN_submit"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="22dp"
                 android:background="@drawable/bg_flow_button_primary"
-                android:text="Create Account"
+                android:text="Join the Flow"
+                android:textAllCaps="false"
                 android:textColor="@color/flow_surface"
+                android:textSize="16sp"
                 android:textStyle="bold" />
 
             <Button
                 android:id="@+id/register_BTN_back"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="12dp"
+                android:layout_height="46dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_flow_button_ghost"
-                android:text="Back"
-                android:textColor="@color/flow_text_secondary" />
+                android:text="Already have an account? Sign in"
+                android:textAllCaps="false"
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="13sp" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

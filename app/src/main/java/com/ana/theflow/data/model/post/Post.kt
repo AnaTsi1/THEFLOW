@@ -1,7 +1,10 @@
+// Firestore models for the social feed: a post (regular, activity, or collaboration), its media,
+// and its comment/reply thread.
 package com.ana.theflow.data.model.post
 
 import com.google.firebase.Timestamp
 
+// One feed post - could be a regular text/media post, a dance activity announcement, or a collaboration request.
 data class Post(
     val postId: String = "",
     val authorId: String = "",
@@ -49,6 +52,7 @@ data class Post(
     val originalAuthorEntityImageUrl: String = ""
 )
 
+// One photo or video attached to a post.
 data class PostMediaItem(
     val id: String = "",
     val url: String = "",
@@ -58,6 +62,7 @@ data class PostMediaItem(
     val uploadedAt: Long = 0L
 )
 
+// A top-level comment on a post, with its own thread of replies.
 data class PostComment(
     val commentId: String = "",
     val postId: String = "",
@@ -71,6 +76,7 @@ data class PostComment(
     val replies: List<PostCommentReply> = emptyList()
 )
 
+// A reply to a comment.
 data class PostCommentReply(
     val replyId: String = "",
     val postId: String = "",

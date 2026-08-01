@@ -9,9 +9,16 @@ class DiscoverViewModel : ViewModel() {
     var requestedExternal: Boolean = false
     var isRefreshing: Boolean = false
     var lastLoadedAtMillis: Long = 0L
-    var scrollY: Int = 0
     var lastError: String = ""
     var recommendationProfile: RecommendationProfile = RecommendationProfile.empty()
+
+    // Lazy-loaded Discover sections (everything except Recommended, which uses the fields
+    // above). Living on this activity-scoped ViewModel means switching away from the Discover
+    // tab and back within the same app session never re-triggers a fetch for a section that's
+    // already been loaded once - only a fresh process start clears this.
+    val triggeredSections: MutableSet<DiscoverSectionType> = mutableSetOf()
+    val loadingSections: MutableSet<DiscoverSectionType> = mutableSetOf()
+    val sectionErrors: MutableMap<DiscoverSectionType, String> = mutableMapOf()
 
     fun hasUsableCache(): Boolean {
         return loadedInternal

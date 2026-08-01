@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.MainActivity
+import com.ana.theflow.R
 import com.ana.theflow.data.repository.DiscoveryRepository
 import com.ana.theflow.data.repository.UserRepository
 import com.ana.theflow.databinding.FragmentOnboardingBinding
@@ -37,12 +38,20 @@ class OnboardingFragment : Fragment() {
         }
     }
 
-    // Configures the screen for onboarding or editing existing preferences.
+    // Configures the screen for onboarding or editing existing preferences. The vibrant
+    // welcome-hero treatment is right for a brand-new dancer's first real interaction with the
+    // app, but this same fragment is reused for "Edit Preferences" from Settings - a returning
+    // user tweaking settings shouldn't see a "let's get you dancing" banner every time, so the
+    // hero flattens to match Settings' plainer tone instead of just swapping its text.
     private fun configureMode() {
         if (!isEditMode) return
 
+        binding.onboardingLAYHero.setBackgroundColor(requireContext().getColor(R.color.flow_background))
+        binding.onboardingLBLEyebrow.visibility = View.GONE
         binding.onboardingLBLTitle.text = "Edit Preferences"
+        binding.onboardingLBLTitle.setTextColor(requireContext().getColor(R.color.flow_ink))
         binding.onboardingLBLSubtitle.text = "Update your city, interests, and recommendation preferences."
+        binding.onboardingLBLSubtitle.setTextColor(requireContext().getColor(R.color.flow_text_secondary))
         binding.onboardingBTNContinue.text = "Save Preferences"
         binding.onboardingBTNBack.visibility = View.VISIBLE
         loadExistingPreferences()

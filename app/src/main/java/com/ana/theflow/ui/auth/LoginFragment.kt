@@ -1,10 +1,13 @@
+// Login form: email/password fields, sign-in, forgot-password, and a link over to registration.
 package com.ana.theflow.ui.auth
 
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import com.ana.theflow.databinding.FragmentLoginBinding
@@ -54,6 +57,35 @@ class LoginFragment : Fragment() {
             authViewModel.clearError()
             (requireActivity() as LoginActivity).showRegister()
         }
+
+        binding.loginLBLForgotPassword.setOnClickListener {
+            showForgotPasswordDialog()
+        }
+    }
+
+    // Shows a dialog to collect (or confirm) the email to send a password reset link to.
+    private fun showForgotPasswordDialog() {
+        val context = requireContext()
+        val input = EditText(context).apply {
+            hint = "Email"
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS or android.text.InputType.TYPE_CLASS_TEXT
+            setText(binding.loginEDTEmail.text)
+        }
+        val padding = (16 * resources.displayMetrics.density).toInt()
+
+        AlertDialog.Builder(context)
+            .setTitle("Reset password")
+            .setMessage("Enter your account email and we'll send you a link to reset your password.")
+            .setView(input.apply { setPadding(padding, 0, padding, 0) })
+            .setPositiveButton("Send") { _, _ ->
+                val email = input.text.toString().trim()
+                authViewModel.sendPasswordReset(email) { message ->
+                    if (!isAdded) return@sendPasswordReset
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // Starts login with the entered credentials.

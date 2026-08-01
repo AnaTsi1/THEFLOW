@@ -3,6 +3,7 @@ package com.ana.theflow.ui.profile
 
 import android.net.Uri
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,6 +24,7 @@ import com.bumptech.glide.Glide
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.account.ActiveAccount
+import com.ana.theflow.data.model.messaging.PartyRef
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.model.post.PostComment
 import com.ana.theflow.data.model.post.PostMediaItem
@@ -64,6 +66,12 @@ class ProfileFragment : Fragment() {
     private var pendingPostMediaType: String = MEDIA_TYPE_NONE
     private var selectedComposerMode = ComposerMode.REGULAR
     private var selectedProfileTab = ProfileTab.POSTS
+    // Bumped on every loadOwnPosts() call. Loading a post's card runs a long chain of sequential
+    // async reads (comments, likes, saves, registration) before it's actually added to the view -
+    // if a newer load starts before an older one's cards finish arriving, the older pass's cards
+    // must be dropped instead of appended, or every post ends up rendered twice.
+    private var postsRenderGeneration = 0
+    private var hasStartedInitialPostsLoad = false
     private var selectedMediaFilter = MediaFilter.ALL
     private var profilePosts: List<Post> = emptyList()
     private var profileMediaItemsCache: List<ProfileMediaItem> = emptyList()
@@ -126,9 +134,6 @@ class ProfileFragment : Fragment() {
         binding.profileLBLAbout.setOnClickListener {
             if (isOwnProfile) showEditBioDialog()
         }
-        binding.profileLBLSkills.setOnClickListener {
-            if (isOwnProfile) (requireActivity() as MainActivity).openEditProfile()
-        }
         binding.profileBTNSettings.setOnClickListener {
             (requireActivity() as MainActivity).openSettings()
         }
@@ -143,6 +148,7 @@ class ProfileFragment : Fragment() {
             startConversation()
         }
         binding.profileBTNFollow.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
             toggleFollow()
         }
         binding.profileBTNReport.setOnClickListener {
@@ -238,23 +244,51 @@ class ProfileFragment : Fragment() {
             user.headline.ifBlank { user.role.cleanDisplayValue() },
             user.location
         ).filter { it.isNotBlank() }.joinToString(" / ")
-        binding.profileLBLHeadline.visibility = if (user.headline.isBlank()) View.GONE else View.VISIBLE
+        binding.profileLAYHeadline.visibility = if (binding.profileLBLHeadline.text.isBlank()) View.GONE else View.VISIBLE
         binding.profileLBLAbout.text = user.bio
         binding.profileLBLAbout.visibility = if (user.bio.isBlank()) View.GONE else View.VISIBLE
-        binding.profileLBLHeadline.visibility = if (binding.profileLBLHeadline.text.isBlank()) View.GONE else View.VISIBLE
-        binding.profileLBLSkills.text = profileTags(user).joinToString(separator = "  /  ")
-        binding.profileLBLSkills.visibility = if (binding.profileLBLSkills.text.isBlank()) View.GONE else View.VISIBLE
+        renderSkillChips(user)
 
         renderProfileImages(user)
         renderProfileActions()
         loadFollowCounts()
         renderSelectedTab()
+        remeasureStickyTabs()
+    }
+
+    // Dance styles/level/skills/badges as tappable pill chips instead of one long "/"-joined
+    // line - reads more like LinkedIn skill badges than a flat text row.
+    private fun renderSkillChips(user: User) {
+        val tags = profileTags(user)
+        binding.profileLAYSkillChips.removeAllViews()
+        binding.profileSCROLLSkillChips.visibility = if (tags.isEmpty()) View.GONE else View.VISIBLE
+        tags.forEach { tag ->
+            binding.profileLAYSkillChips.addView(TextView(requireContext()).apply {
+                text = tag
+                setTextColor(requireContext().getColor(R.color.flow_brand))
+                textSize = 13f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setBackgroundResource(R.drawable.bg_flow_chip)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { rightMargin = 8.dp() }
+                isClickable = isOwnProfile
+                isFocusable = isOwnProfile
+                if (isOwnProfile) {
+                    setOnClickListener { (requireActivity() as MainActivity).openEditProfile() }
+                }
+            })
+        }
     }
 
     override fun onResume() {
         super.onResume()
         refreshProfileHeaderAfterEditIfNeeded()
-        if (_binding != null && profileUid.isNotBlank()) {
+        // Skip the very first resume - loadProfile()'s own initial load (kicked off from
+        // onViewCreated) is already in flight at this point, so reloading here too would just
+        // start a second, redundant pass racing the first one.
+        if (_binding != null && profileUid.isNotBlank() && hasStartedInitialPostsLoad) {
             loadOwnPosts(profileUid)
             if (isOwnProfile) loadRegisteredEvents()
         }
@@ -314,14 +348,22 @@ class ProfileFragment : Fragment() {
     }
 
     private fun setupStickyTabs() {
-        binding.profileLAYTabs.post {
-            tabsPinnedTop = binding.profileLAYTabs.top
-        }
+        remeasureStickyTabs()
         binding.profileSCROLLRoot.setOnScrollChangeListener { _, _, scrollY, _, _ ->
             val offset = (scrollY - tabsPinnedTop).coerceAtLeast(0)
             binding.profileLAYTabs.translationY = offset.toFloat()
             binding.profileLAYTabs.elevation = if (offset > 0) 8.dp().toFloat() else 0f
             if (offset > 0) binding.profileLAYTabs.bringToFront()
+        }
+    }
+
+    // The header above the tabs (name, bio, skills, media strip) grows once real profile data
+    // arrives asynchronously - capturing the tabs' pinned position only once, before that data
+    // loads, leaves it permanently wrong (the tabs then "stick" partway down the screen instead of
+    // at the top). Re-measure whenever content that changes the header's height finishes rendering.
+    private fun remeasureStickyTabs() {
+        binding.profileLAYTabs.post {
+            if (_binding != null) tabsPinnedTop = binding.profileLAYTabs.top
         }
     }
 
@@ -747,7 +789,7 @@ class ProfileFragment : Fragment() {
         }
         binding.profileBTNMessage.isEnabled = false
         messagingRepository.resolveOrCreateConversation(
-            otherUserId = targetUid,
+            target = PartyRef.user(targetUid),
             onSuccess = { conversationId ->
                 if (_binding == null) return@resolveOrCreateConversation
                 binding.profileBTNMessage.isEnabled = true
@@ -759,11 +801,6 @@ class ProfileFragment : Fragment() {
                 Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not start this conversation."), Toast.LENGTH_LONG).show()
             }
         )
-    }
-
-    // Formats one profile detail line.
-    private fun line(label: String, value: String): String? {
-        return value.ifBlank { null }?.let { "$label: $it" }
     }
 
     // Loads profile and cover images into the header.
@@ -1295,6 +1332,8 @@ class ProfileFragment : Fragment() {
 
     // Loads posts written by the current user.
     private fun loadOwnPosts(uid: String) {
+        hasStartedInitialPostsLoad = true
+        postsRenderGeneration += 1
         binding.profilePROGRESSContent.visibility = View.VISIBLE
         binding.profileLAYPosts.removeAllViews()
         postRepository.loadPostsByAuthor(
@@ -1336,7 +1375,8 @@ class ProfileFragment : Fragment() {
         val posts = profilePosts.filterNot { it.postType == POST_TYPE_DANCE_ACTIVITY }
         binding.profileLBLPostsEmpty.text = "No posts yet."
         binding.profileLBLPostsEmpty.visibility = if (posts.isEmpty() && binding.profilePROGRESSContent.visibility != View.VISIBLE) View.VISIBLE else View.GONE
-        posts.forEach { post -> renderOwnPostCard(post) }
+        val generation = postsRenderGeneration
+        posts.forEach { post -> renderOwnPostCard(post, generation) }
     }
 
     private fun renderEventsTab() {
@@ -1442,33 +1482,81 @@ class ProfileFragment : Fragment() {
         }
     }
 
+    // LinkedIn-style icon-labeled fact rows instead of one flat joined paragraph - each fact gets
+    // an icon, a small muted caption, and the value, with a hairline divider between rows.
     private fun renderAboutTab() {
         val user = currentUser ?: return
         binding.profileLAYPosts.removeAllViews()
         binding.profileLAYPosts.visibility = View.GONE
         binding.profileLAYMediaPanel.visibility = View.GONE
         binding.profileLAYSections.visibility = View.VISIBLE
-        val aboutLines = listOfNotNull(
-            line("Role", user.role.cleanDisplayValue()),
-            line("Location", user.location),
-            line("Professional background", user.professionalBackground),
-            line("Dance styles", user.danceStyles.joinToString(", ")),
-            line("Level", user.danceLevel),
-            line("Skills", user.skills.joinToString(", ")),
-            line("Professional badges", user.professionalBadges.joinToString(", ")),
-            line("Years of experience", user.yearsOfExperience),
-            line("Studios", user.studiosTrainedAt.joinToString(", ")),
-            line("Teachers", user.teachersLearnedFrom.joinToString(", ")),
-            line("Performances / competitions", user.performancesCompetitions.joinToString(", ")),
-            line("Availability", user.availability),
-            line("Instagram", user.instagramUrl),
-            line("TikTok", user.tiktokUrl),
-            line("YouTube", user.youtubeUrl)
+        binding.profileLAYDetails.removeAllViews()
+
+        val facts = listOfNotNull(
+            aboutFact(R.drawable.ic_profile_24, "Role", user.role.cleanDisplayValue()),
+            aboutFact(R.drawable.ic_location_24, "Location", user.location),
+            aboutFact(R.drawable.ic_discover_24, "Dance styles", user.danceStyles.joinToString(", ")),
+            aboutFact(R.drawable.ic_check_circle_24, "Level", user.danceLevel),
+            aboutFact(R.drawable.ic_work_24, "Professional background", user.professionalBackground),
+            aboutFact(R.drawable.ic_bookmark_24, "Skills", user.skills.joinToString(", ")),
+            aboutFact(R.drawable.ic_check_circle_24, "Professional badges", user.professionalBadges.joinToString(", ")),
+            aboutFact(R.drawable.ic_event_24, "Years of experience", user.yearsOfExperience),
+            aboutFact(R.drawable.ic_work_24, "Studios trained at", user.studiosTrainedAt.joinToString(", ")),
+            aboutFact(R.drawable.ic_profile_24, "Teachers learned from", user.teachersLearnedFrom.joinToString(", ")),
+            aboutFact(R.drawable.ic_check_circle_24, "Performances / competitions", user.performancesCompetitions.joinToString(", ")),
+            aboutFact(R.drawable.ic_event_24, "Availability", user.availability),
+            aboutFact(R.drawable.ic_share_24, "Instagram", user.instagramUrl),
+            aboutFact(R.drawable.ic_share_24, "TikTok", user.tiktokUrl),
+            aboutFact(R.drawable.ic_share_24, "YouTube", user.youtubeUrl)
         )
-        binding.profileLBLDetails.text = aboutLines.joinToString("\n\n")
-        binding.profileLBLDetails.visibility = if (aboutLines.isEmpty()) View.GONE else View.VISIBLE
+        facts.forEachIndexed { index, row ->
+            binding.profileLAYDetails.addView(row)
+            if (index < facts.lastIndex) {
+                binding.profileLAYDetails.addView(View(requireContext()).apply {
+                    setBackgroundColor(requireContext().getColor(R.color.flow_border))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1.dp())
+                })
+            }
+        }
         binding.profileLBLPostsEmpty.text = "No profile details yet."
-        binding.profileLBLPostsEmpty.visibility = if (aboutLines.isEmpty()) View.VISIBLE else View.GONE
+        binding.profileLBLPostsEmpty.visibility = if (facts.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    // Builds one icon-labeled fact row, or null if there's nothing to show for it - callers
+    // filter with listOfNotNull so an empty profile doesn't render a wall of blank rows.
+    private fun aboutFact(iconRes: Int, label: String, value: String): View? {
+        if (value.isBlank()) return null
+        val context = requireContext()
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 12.dp(), 0, 12.dp())
+            addView(ImageView(context).apply {
+                setImageResource(iconRes)
+                setColorFilter(context.getColor(R.color.flow_brand))
+                layoutParams = LinearLayout.LayoutParams(20.dp(), 20.dp()).apply {
+                    rightMargin = 14.dp()
+                    topMargin = 2.dp()
+                }
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = label
+                    setTextColor(context.getColor(R.color.flow_text_muted))
+                    textSize = 11f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    letterSpacing = 0.03f
+                })
+                addView(TextView(context).apply {
+                    text = value
+                    setTextColor(context.getColor(R.color.flow_ink))
+                    textSize = 14f
+                    setLineSpacing(3.dp().toFloat(), 1f)
+                    setPadding(0, 2.dp(), 0, 0)
+                })
+            })
+        }
     }
 
     private fun profileTags(user: User): List<String> {
@@ -1490,16 +1578,17 @@ class ProfileFragment : Fragment() {
     }
 
     // Renders one owned post with edit, like, comment, and media actions.
-    private fun renderOwnPostCard(post: Post) {
+    private fun renderOwnPostCard(post: Post, generation: Int) {
         postRepository.loadComments(
             postId = post.postId,
+            commentLimit = PostCardRenderer.COMMENTS_PREVIEW_LIMIT.toLong(),
             onSuccess = { comments ->
                 if (_binding == null) return@loadComments
-                loadProfilePostEngagementState(post, comments)
+                loadProfilePostEngagementState(post, comments, generation)
             },
             onFailure = {
                 if (_binding == null) return@loadComments
-                loadProfilePostEngagementState(post, emptyList())
+                loadProfilePostEngagementState(post, emptyList(), generation)
             }
         )
     }
@@ -1514,21 +1603,21 @@ class ProfileFragment : Fragment() {
     }
 
     // Loads viewer-specific engagement state for one profile post before rendering it.
-    private fun loadProfilePostEngagementState(post: Post, comments: List<PostComment>) {
+    private fun loadProfilePostEngagementState(post: Post, comments: List<PostComment>, generation: Int) {
         postRepository.loadLikeCount(
             postId = post.postId,
             onSuccess = { likeCount ->
                 if (_binding == null) return@loadLikeCount
-                loadProfilePostEngagementStateWithCount(post.copy(likesCount = likeCount), comments)
+                loadProfilePostEngagementStateWithCount(post.copy(likesCount = likeCount), comments, generation)
             },
             onFailure = {
                 if (_binding == null) return@loadLikeCount
-                loadProfilePostEngagementStateWithCount(post, comments)
+                loadProfilePostEngagementStateWithCount(post, comments, generation)
             }
         )
     }
 
-    private fun loadProfilePostEngagementStateWithCount(post: Post, comments: List<PostComment>) {
+    private fun loadProfilePostEngagementStateWithCount(post: Post, comments: List<PostComment>, generation: Int) {
         postRepository.isPostLikedByCurrentUser(
             postId = post.postId,
             onSuccess = { isLiked ->
@@ -1537,17 +1626,17 @@ class ProfileFragment : Fragment() {
                     postId = post.postId,
                     onSuccess = { isSaved ->
                         if (_binding == null) return@isPostSavedByCurrentUser
-                        loadProfileEventRegistrationState(post, comments, isLiked, isSaved)
+                        loadProfileEventRegistrationState(post, comments, isLiked, isSaved, generation)
                     },
                     onFailure = {
                         if (_binding == null) return@isPostSavedByCurrentUser
-                        loadProfileEventRegistrationState(post, comments, isLiked, isSaved = false)
+                        loadProfileEventRegistrationState(post, comments, isLiked, isSaved = false, generation = generation)
                     }
                 )
             },
             onFailure = {
                 if (_binding == null) return@isPostLikedByCurrentUser
-                loadProfileEventRegistrationState(post, comments, isLiked = false, isSaved = false)
+                loadProfileEventRegistrationState(post, comments, isLiked = false, isSaved = false, generation = generation)
             }
         )
     }
@@ -1557,30 +1646,34 @@ class ProfileFragment : Fragment() {
         post: Post,
         comments: List<PostComment>,
         isLiked: Boolean,
-        isSaved: Boolean
+        isSaved: Boolean,
+        generation: Int
     ) {
         postRepository.isEventRegisteredByCurrentUser(
             post = post,
             onSuccess = { isRegistered ->
                 if (_binding == null) return@isEventRegisteredByCurrentUser
-                addProfilePostCard(post, comments, isLiked, isSaved, isRegistered)
+                addProfilePostCard(post, comments, isLiked, isSaved, isRegistered, generation)
             },
             onFailure = {
                 if (_binding == null) return@isEventRegisteredByCurrentUser
-                addProfilePostCard(post, comments, isLiked, isSaved, isEventRegistered = false)
+                addProfilePostCard(post, comments, isLiked, isSaved, isEventRegistered = false, generation = generation)
             }
         )
     }
 
-    // Adds one profile post card with edit controls only on the owner's profile.
+    // Adds one profile post card with edit controls only on the owner's profile. Guarded against
+    // a stale render pass (see postsRenderGeneration) still delivering cards after a newer
+    // loadOwnPosts() call has already cleared and started repopulating the same view.
     private fun addProfilePostCard(
         post: Post,
         comments: List<PostComment>,
         isLiked: Boolean,
         isSaved: Boolean,
-        isEventRegistered: Boolean
+        isEventRegistered: Boolean,
+        generation: Int
     ) {
-        if (selectedProfileTab != ProfileTab.POSTS) return
+        if (selectedProfileTab != ProfileTab.POSTS || generation != postsRenderGeneration) return
         PostCardRenderer.addPostCard(
             parent = binding.profileLAYPosts,
             post = post,
@@ -1932,13 +2025,15 @@ class ProfileFragment : Fragment() {
             .show()
     }
 
-    // Shows the profile media strip and full media panel.
+    // Shows the profile media strip and full media panel. An empty profile shouldn't show an
+    // apologetic "no media yet" box - the section (and its divider) simply doesn't render at all
+    // until there's something real to show.
     private fun renderProfileMedia(posts: List<Post>) {
         val mediaItems = profileMediaItemsCache.ifEmpty { collectProfileMediaItems(posts) }
 
-        binding.profileLAYMediaSection.visibility = View.VISIBLE
-        binding.profileLBLMediaEmpty.visibility = if (mediaItems.isEmpty()) View.VISIBLE else View.GONE
         binding.profileLAYMediaStrip.removeAllViews()
+        binding.profileLAYMediaSection.visibility = if (mediaItems.isEmpty()) View.GONE else View.VISIBLE
+        binding.profileDIVIDERMedia.visibility = if (mediaItems.isEmpty()) View.GONE else View.VISIBLE
         if (mediaItems.isEmpty()) {
             return
         }
@@ -1950,6 +2045,7 @@ class ProfileFragment : Fragment() {
         mediaItems.take(MEDIA_STRIP_LIMIT).forEach { media ->
             binding.profileLAYMediaStrip.addView(createMediaTile(media, compact = true))
         }
+        remeasureStickyTabs()
     }
 
     // Returns editable media items for one post, including old mediaUrls-only posts.
@@ -1990,12 +2086,19 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // Creates one media tile with preview and menu actions.
+    // Creates one media tile with preview and menu actions. Bordered card style with a subtle
+    // shadow and a quick press-scale animation (matching the tap feedback used elsewhere in the
+    // app, e.g. post cards) so the grid reads as a real gallery, not a bare row of bitmaps.
     private fun createMediaTile(media: ProfileMediaItem, compact: Boolean): View {
         val size = if (compact) 96.dp() else 220.dp()
         val frame = FrameLayout(requireContext()).apply {
-            setBackgroundResource(R.drawable.bg_media_gradient)
+            setBackgroundResource(R.drawable.bg_profile_media_tile)
+            clipToOutline = true
+            elevation = 2.dp().toFloat()
+            isClickable = true
+            isFocusable = true
             setOnClickListener {
+                subtleTapFeedback(this)
                 (requireActivity() as MainActivity).openMediaViewer(media.item.url, media.item.mediaType)
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -2146,6 +2249,19 @@ class ProfileFragment : Fragment() {
                 Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    // Quick scale-down/up on tap, matching the feedback style used elsewhere in the app (e.g.
+    // PostCardRenderer) instead of introducing a new ripple-based interaction pattern.
+    private fun subtleTapFeedback(view: View) {
+        view.animate()
+            .scaleX(0.96f)
+            .scaleY(0.96f)
+            .setDuration(70)
+            .withEndAction {
+                view.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
+            }
+            .start()
     }
 
     // Splits comma-separated text into a list.

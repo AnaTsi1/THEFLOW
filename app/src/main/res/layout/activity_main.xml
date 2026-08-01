@@ -13,7 +13,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@+id/main_LAY_topActions"
-        android:layout_above="@+id/main_LAY_bottomNav" />
+        android:layout_above="@+id/main_LAY_bottomNav"
+        android:layout_marginTop="10dp" />
 
     <LinearLayout
         android:id="@+id/main_LAY_topActions"

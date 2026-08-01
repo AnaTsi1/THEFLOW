@@ -1,3 +1,4 @@
+// Handles sign-in, sign-up, sign-out, and password reset via Firebase Authentication.
 package com.ana.theflow.data.repository
 
 import com.ana.theflow.data.session.ActiveAccountHolder
@@ -7,7 +8,7 @@ class AuthRepository {
 
     private val auth = FirebaseAuth.getInstance()
 
-    // Signs in a user with email and password.
+    // Signs in an existing user.
     fun login(
         email: String,
         password: String,
@@ -21,7 +22,7 @@ class AuthRepository {
             }
     }
 
-    // Creates a new user account.
+    // Creates a brand-new account.
     fun register(
         email: String,
         password: String,
@@ -35,19 +36,26 @@ class AuthRepository {
             }
     }
 
-    // Signs out the current user and returns to login.
+    // Sends a password reset email. We always call onComplete the same way regardless of whether
+    // the email actually matches an account, so someone can't use this to check if an address is registered.
+    fun sendPasswordReset(email: String, onComplete: () -> Unit) {
+        auth.sendPasswordResetEmail(email)
+            .addOnCompleteListener { onComplete() }
+    }
+
+    // Signs out and also clears the cached recommendation data and active-account choice, so the next login starts fresh.
     fun logout() {
         DiscoveryRepository.resetForUser("")
         ActiveAccountHolder.clear()
         auth.signOut()
     }
 
-    // Deletes the currently signed-in auth user.
+    // Deletes the signed-in account.
     fun deleteCurrentUser() {
         auth.currentUser?.delete()
     }
 
-    // Returns the signed-in user id.
+    // Returns the signed-in user's uid, or null if nobody's signed in.
     fun getCurrentUserUid(): String? {
         return auth.currentUser?.uid
     }

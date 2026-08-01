@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -22,9 +23,12 @@ import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.ui.account.AccountSwitcherDialog
 import com.ana.theflow.ui.account.ActiveAccountViewModel
 import com.ana.theflow.ui.studio.EditStudioProfileFragment
+import com.ana.theflow.ui.studio.StudioAnalyticsFragment
 import com.ana.theflow.ui.studio.StudioProfileFragment
 import com.ana.theflow.databinding.ActivityMainBinding
+import com.ana.theflow.ui.admin.AdminRecommendationInsightsFragment
 import com.ana.theflow.ui.admin.AdminReviewFragment
+import com.ana.theflow.ui.admin.AdminSettingsFragment
 import com.ana.theflow.ui.creation.CollaborationCreationFragment
 import com.ana.theflow.ui.creation.EventCreationFragment
 import com.ana.theflow.ui.creation.PostCreationFragment
@@ -33,6 +37,8 @@ import com.ana.theflow.ui.detail.PostDetailFragment
 import com.ana.theflow.ui.discover.DiscoverFragment
 import com.ana.theflow.ui.events.EventsFragment
 import com.ana.theflow.ui.home.HomeFragment
+import com.ana.theflow.ui.jobs.JobCreationFragment
+import com.ana.theflow.ui.jobs.JobDetailFragment
 import com.ana.theflow.ui.jobs.JobsFragment
 import com.ana.theflow.ui.media.MediaViewerFragment
 import com.ana.theflow.ui.messaging.ChatFragment
@@ -54,6 +60,7 @@ import com.ana.theflow.ui.settings.HelpAboutSettingsFragment
 import com.ana.theflow.ui.settings.NotificationSettingsFragment
 import com.ana.theflow.ui.settings.PrivacySafetySettingsFragment
 import com.ana.theflow.ui.settings.ProfessionalVerificationFragment
+import com.ana.theflow.utilities.AccountPermissions
 import com.ana.theflow.ui.settings.ProfileSettingsFragment
 import com.ana.theflow.ui.settings.SettingsFragment
 import com.ana.theflow.ui.admin.AdminUserPermissionsFragment
@@ -81,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     private val activeAccountListener: (ActiveAccount) -> Unit = {
         accountViewModel.refresh()
         invalidateProfileRootTab()
+        setupBadges()
         if (selectedTab == AppTab.PROFILE) {
             openProfile()
         }
@@ -151,12 +159,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupBadges() {
+        val account = ActiveAccountHolder.current()
         messageBadgeListener?.remove()
         notificationBadgeListener?.remove()
         messageBadgeListener = messagingRepository.listenToUnreadCount(
+            account = account,
             onUpdate = { count -> renderBadge(binding.mainBadgeMessages, count) }
         )
         notificationBadgeListener = notificationRepository.listenToUnreadCount(
+            account = account,
             onUpdate = { count -> renderBadge(binding.mainBadgeNotifications, count) }
         )
     }
@@ -201,6 +212,17 @@ class MainActivity : AppCompatActivity() {
         openFragment(JobsFragment(), addToBackStack = true)
     }
 
+    // Opens the job-posting form for the studio the signed-in user currently has active.
+    fun openJobCreation() {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(JobCreationFragment(), addToBackStack = true)
+    }
+
+    fun openJobDetail(jobId: String) {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(JobDetailFragment.newInstance(jobId), addToBackStack = true)
+    }
+
     fun openEvents() {
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(EventsFragment(), addToBackStack = true)
@@ -233,6 +255,12 @@ class MainActivity : AppCompatActivity() {
     fun openEditStudioProfile(studioId: String) {
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(EditStudioProfileFragment.newInstance(studioId), addToBackStack = true)
+    }
+
+    // Opens the studio-wide analytics/jobs+applicants dashboard placeholder for a studio manager.
+    fun openStudioAnalytics() {
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(StudioAnalyticsFragment(), addToBackStack = true)
     }
 
     // Routes a post/job/message author tap to the right profile - a studio's business profile
@@ -340,6 +368,31 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    // Lets a user with no business account yet start either of the two ways to get one:
+    // creating a brand-new studio page, or claiming one they find via Search.
+    fun openAddBusinessAccountMenu() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18.dp(), 18.dp(), 18.dp(), 8.dp())
+            addView(TextView(this@MainActivity).apply {
+                text = "Add a business account"
+                setTextColor(getColor(R.color.flow_ink))
+                textSize = 19f
+                setTypeface(typeface, Typeface.BOLD)
+            })
+        }
+        val dialog = AlertDialog.Builder(this).setView(content).create()
+        content.addView(creationChoice("Create a studio page", "Set up a brand-new business account for your studio.") {
+            dialog.dismiss()
+            openStudioRequest(mode = "create")
+        })
+        content.addView(creationChoice("Claim an existing studio", "Find your studio in Search, then tap Claim Studio on its page.") {
+            dialog.dismiss()
+            openSearch()
+        })
+        dialog.show()
+    }
+
     fun openPostCreation() {
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(PostCreationFragment(), addToBackStack = true)
@@ -356,8 +409,30 @@ class MainActivity : AppCompatActivity() {
         AccountSwitcherDialog().show(supportFragmentManager, AccountSwitcherDialog.TAG)
     }
 
+    // AccountSwitcherDialog just renders whatever's already in accountViewModel.accounts - it
+    // never refreshes itself. A studio-request approval can land in a session that started
+    // before the approval happened, so the switcher would otherwise still look like the new
+    // business account doesn't exist. Used when a "studio request approved" notification is
+    // tapped, so the account is actually there the moment the switcher opens.
+    fun refreshAccountsThenOpenSwitcher() {
+        accountViewModel.refresh(onDone = { if (!isFinishing) openAccountSwitcher() })
+    }
+
+    // Re-checks which studios the signed-in user manages. accountViewModel.refresh() otherwise
+    // only ever runs at cold start or right after a switch, so an approval that lands while a
+    // session is already open (without the user tapping the approval notification specifically)
+    // would leave the switcher looking like it doesn't exist. Screens that show the switcher
+    // entry point call this from onResume() so it self-corrects on every return visit.
+    fun refreshActiveAccount(onDone: () -> Unit = {}) {
+        accountViewModel.refresh(onDone = { if (!isFinishing) onDone() })
+    }
+
     // Returns the currently active account's display summary, if loaded.
     fun activeAccountSummary() = accountViewModel.activeSummary()
+
+    // Whether the signed-in user manages at least one studio - the account switcher is only
+    // ever relevant to someone who actually has a business account to switch into.
+    fun hasBusinessAccounts(): Boolean = accountViewModel.managedStudios.isNotEmpty()
 
     fun openCollaborationCreation() {
         binding.mainLAYBottomNav.visibility = View.GONE
@@ -455,16 +530,45 @@ class MainActivity : AppCompatActivity() {
         openFragment(ProfessionalVerificationFragment(), addToBackStack = true)
     }
 
-    // Opens the admin review screen from Settings.
+    // Defense-in-depth for the three admin screens below: Firestore rules already refuse every
+    // real admin read/write for a non-admin, but this closes the gap where a non-admin could
+    // still reach the screen shell itself via a deep link or restored back-stack, since the only
+    // other gate is SettingsFragment simply not rendering the "Admin" row for them.
+    private fun requireAdminAccess(): Boolean {
+        val user = accountViewModel.currentUser
+        if (user == null || !AccountPermissions.isAdmin(user)) {
+            Toast.makeText(this, "You don't have permission to view this.", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return true
+    }
+
+    // Opens the admin hub from Settings - "Approve Requests" and "Manage User Permissions".
+    fun openAdminSettings() {
+        if (!requireAdminAccess()) return
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(AdminSettingsFragment(), addToBackStack = true)
+    }
+
+    // Opens the tabbed studio requests / professional applications / content reports screen.
     fun openAdminReview() {
-        binding.mainLAYBottomNav.visibility = View.VISIBLE
+        if (!requireAdminAccess()) return
+        binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(AdminReviewFragment(), addToBackStack = true)
     }
 
     // Opens the admin user-permissions editor.
     fun openAdminUserPermissions() {
+        if (!requireAdminAccess()) return
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(AdminUserPermissionsFragment(), addToBackStack = true)
+    }
+
+    // Opens the admin recommendation-insights diagnostic screen.
+    fun openAdminRecommendationInsights() {
+        if (!requireAdminAccess()) return
+        binding.mainLAYBottomNav.visibility = View.GONE
+        openFragment(AdminRecommendationInsightsFragment(), addToBackStack = true)
     }
 
     // Opens the studio create/claim request screen.
@@ -473,11 +577,14 @@ class MainActivity : AppCompatActivity() {
         studioId: String = "",
         studioName: String = "",
         googlePlaceId: String = "",
-        address: String = ""
+        address: String = "",
+        latitude: Double? = null,
+        longitude: Double? = null,
+        coverImageUrl: String = ""
     ) {
         binding.mainLAYBottomNav.visibility = View.GONE
         openFragment(
-            StudioRequestFragment.newInstance(mode, studioId, studioName, googlePlaceId, address),
+            StudioRequestFragment.newInstance(mode, studioId, studioName, googlePlaceId, address, latitude, longitude, coverImageUrl),
             addToBackStack = true
         )
     }
@@ -601,7 +708,9 @@ class MainActivity : AppCompatActivity() {
         val current = supportFragmentManager.findFragmentById(R.id.main_fragment_container)
 
         if (current is StudioProfileFragment) {
-            binding.mainLAYBottomNav.visibility = if (current.isRootTabInstance()) View.VISIBLE else View.GONE
+            val rootTabVisibility = if (current.isRootTabInstance()) View.VISIBLE else View.GONE
+            binding.mainLAYBottomNav.visibility = rootTabVisibility
+            binding.mainLAYTopActions.visibility = rootTabVisibility
         } else {
             when (current) {
                 is DetailFragment,
@@ -633,10 +742,19 @@ class MainActivity : AppCompatActivity() {
                 is AdminUserPermissionsFragment,
                 is StudioRequestFragment,
                 is EditStudioProfileFragment,
+                is JobCreationFragment,
+                is JobDetailFragment,
                 is ChatFragment -> {
+                    // Any screen deep enough to hide the bottom nav is also deep enough that the
+                    // global notification/message shortcuts in the top corner are redundant
+                    // clutter rather than useful navigation - hide both together.
                     binding.mainLAYBottomNav.visibility = View.GONE
+                    binding.mainLAYTopActions.visibility = View.GONE
                 }
-                else -> binding.mainLAYBottomNav.visibility = View.VISIBLE
+                else -> {
+                    binding.mainLAYBottomNav.visibility = View.VISIBLE
+                    binding.mainLAYTopActions.visibility = View.VISIBLE
+                }
             }
         }
 

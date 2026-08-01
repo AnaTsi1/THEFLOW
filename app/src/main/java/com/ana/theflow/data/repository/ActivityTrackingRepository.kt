@@ -1,5 +1,8 @@
+// The one place every user action (like, save, follow, search, hide...) gets recorded, both as a
+// raw activity event and as an update to the user's learned recommendation profile.
 package com.ana.theflow.data.repository
 
+import android.util.Log
 import com.ana.theflow.data.model.post.Post
 import com.ana.theflow.data.recommendation.RecommendationSurface
 import com.ana.theflow.data.recommendation.PopularitySignals
@@ -21,12 +24,15 @@ class ActivityTrackingRepository {
 
     private companion object {
         const val MAX_USER_ACTIVITY_EVENTS = 50L
+        const val TAG = "RecommendationTrackingDebug"
     }
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
-    // Stores an activity event and updates recommendations.
+    // The core tracking function everything else calls into. Writes a raw activity event, then
+    // updates the user's learned recommendation profile, then prunes old events so this doesn't
+    // grow forever.
     fun trackEvent(
         eventType: String,
         targetType: String,
@@ -78,6 +84,10 @@ class ActivityTrackingRepository {
                 pruneOldActivityEvents(uid)
             }
             .addOnFailureListener { error ->
+                // Most call sites don't pass an onFailure handler, since a failed
+                // behavioral-learning write shouldn't ever bother the user - but we still log it
+                // so a broken learning signal is at least visible somewhere.
+                Log.e(TAG, "activity event write failed uid=$uid eventType=$eventType targetId=$targetId", error)
                 onFailure(error.message ?: "Failed to track activity")
             }
     }
@@ -159,6 +169,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was commented on.
     fun trackPostCommented(post: Post, interactionStrength: Double = 1.0) {
         trackEvent(
             eventType = EventTypes.COMMENT_POST,
@@ -170,6 +181,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was shared.
     fun trackPostShared(post: Post, interactionStrength: Double = 1.0) {
         trackEvent(
             eventType = EventTypes.SHARE_POST,
@@ -181,6 +193,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a post was hidden.
     fun trackPostHidden(post: Post) {
         trackEvent(
             eventType = EventTypes.HIDE,
@@ -191,6 +204,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks registering or un-registering for an event.
     fun trackEventRegistration(post: Post, registered: Boolean) {
         trackEvent(
             eventType = if (registered) EventTypes.REGISTER_EVENT else EventTypes.CANCEL_REGISTRATION,
@@ -203,6 +217,8 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Batch-records that a set of posts was shown to the user (an impression), capped at 20 at a
+    // time, and marks them as "seen" on the profile so they don't feel repetitive later.
     fun trackPostImpressions(posts: List<Post>, surface: RecommendationSurface) {
         val uid = auth.currentUser?.uid ?: return
         val visiblePosts = posts.distinctBy { it.postId }.filter { it.postId.isNotBlank() }.take(20)
@@ -319,6 +335,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks that a discovery item (studio/activity) was shared.
     fun trackShareItem(
         targetType: String,
         targetId: String,
@@ -336,6 +353,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Tracks unfollowing a user.
     fun trackUnfollowUser(targetUserId: String, targetName: String = "") {
         trackEvent(
             eventType = EventTypes.UNFOLLOW_USER,
@@ -345,7 +363,9 @@ class ActivityTrackingRepository {
         )
     }
 
-    // Updates the user recommendation profile from an event.
+    // Turns one tracked event into real score changes on the user's recommendation profile -
+    // works out which dimensions move (via the signal planner), applies them as increments, and
+    // deduplicates certain signal types so the same action can't be counted twice.
     private fun updateRecommendationProfile(
         uid: String,
         eventType: String,
@@ -386,7 +406,6 @@ class ActivityTrackingRepository {
             updates["scoreMetadata.$key.score"] = FieldValue.increment(amount)
             updates["scoreMetadata.$key.lastUpdatedMillis"] = now
             updates["scoreMetadata.$key.interactionCount"] = FieldValue.increment(1)
-            updates["scoreMetadata.$key.confidence"] = RecommendationScoreMath.confidence(1)
             if (amount >= 0.0) {
                 updates["scoreMetadata.$key.positiveCount"] = FieldValue.increment(1)
             } else {
@@ -395,6 +414,11 @@ class ActivityTrackingRepository {
         }
 
         val profileRef = db.document(RecommendationFirestorePaths.profile(uid))
+        // set(map, SetOptions.merge()) treats a key like "styleScores.hip_hop" as one literal
+        // field name with a dot in it, not a nested path the way update() would - so we convert
+        // our dotted keys into a real nested map ourselves first, otherwise scores would pile up
+        // under weird flat field names instead of inside a real styleScores/locationScores map.
+        val nestedUpdates = updates.toNestedFirestoreMap()
 
         if (RecommendationProfileUpdatePlanner.shouldDedupe(signal) && plan.dedupeKey.isNotBlank()) {
             val dedupeRef = db.document(RecommendationFirestorePaths.signalDedupe(uid, plan.dedupeKey))
@@ -402,19 +426,37 @@ class ActivityTrackingRepository {
                 val existing = transaction.get(dedupeRef)
                 if (!existing.exists()) {
                     transaction.set(dedupeRef, mapOf("createdAt" to FieldValue.serverTimestamp(), "eventType" to eventType, "targetId" to targetId))
-                    transaction.set(profileRef, updates, SetOptions.merge())
+                    transaction.set(profileRef, nestedUpdates, SetOptions.merge())
                 }
             }.addOnFailureListener { error ->
+                Log.e(TAG, "recommendation profile update (dedup path) failed uid=$uid eventType=$eventType targetId=$targetId", error)
                 onFailure(error.message ?: "Failed to update recommendation profile")
             }
             return
         }
 
-        db.document(RecommendationFirestorePaths.profile(uid))
-            .set(updates, SetOptions.merge())
+        profileRef
+            .set(nestedUpdates, SetOptions.merge())
             .addOnFailureListener { error ->
+                Log.e(TAG, "recommendation profile update failed uid=$uid eventType=$eventType targetId=$targetId", error)
                 onFailure(error.message ?: "Failed to update recommendation profile")
             }
+    }
+
+    // Turns a flat map like {"styleScores.hip_hop": 5} into a real nested map like
+    // {"styleScores": {"hip_hop": 5}}, so Firestore actually treats it as nested data.
+    private fun Map<String, Any>.toNestedFirestoreMap(): Map<String, Any> {
+        val root = mutableMapOf<String, Any>()
+        for ((path, value) in this) {
+            val parts = path.split(".")
+            var current = root
+            for (i in 0 until parts.size - 1) {
+                @Suppress("UNCHECKED_CAST")
+                current = current.getOrPut(parts[i]) { mutableMapOf<String, Any>() } as MutableMap<String, Any>
+            }
+            current[parts.last()] = value
+        }
+        return root
     }
 
     // Keeps only the newest activity events for a user so raw behavior data does not grow forever.
@@ -432,7 +474,9 @@ class ActivityTrackingRepository {
                     batch.delete(document.reference)
                 }
                 batch.commit()
+                    .addOnFailureListener { error -> Log.w(TAG, "prune delete batch failed uid=$uid", error) }
             }
+            .addOnFailureListener { error -> Log.w(TAG, "prune query failed uid=$uid", error) }
     }
 
     // Clamps interaction strength to a safe range.
@@ -446,6 +490,7 @@ class ActivityTrackingRepository {
         return RecommendationNormalizer.id(value)
     }
 
+    // All the raw event-type strings we write to Firestore.
     object EventTypes {
         const val VIEW_PROFILE = "view_profile"
         const val VIEW_POST = "view_post"
@@ -465,6 +510,7 @@ class ActivityTrackingRepository {
         const val HIDE = "hide"
     }
 
+    // All the target-type strings (what kind of thing an event happened to).
     object TargetTypes {
         const val USER = "user"
         const val POST = "post"
@@ -495,6 +541,8 @@ class ActivityTrackingRepository {
         ).filterValues { it.isNotBlank() }
     }
 
+    // Builds the normalized features (style, location, creator, etc.) an event's target has, so
+    // the signal planner can route the score update to the right dimensions.
     private fun buildFeatures(
         targetId: String,
         targetType: String,
@@ -524,6 +572,7 @@ class ActivityTrackingRepository {
         )
     }
 
+    // Scans free text for mentions of a style we know about, used when there's no explicit style field.
     private fun extractKnownStyles(text: String): List<String> {
         val lower = text.lowercase()
         return listOf("Hip Hop", "Heels", "Contemporary", "Ballet", "Jazz", "Salsa", "Bachata")

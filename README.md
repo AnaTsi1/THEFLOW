@@ -57,13 +57,16 @@ app/src/main/java/com/ana/theflow
 
 1. Add or update `app/google-services.json` with the Firebase Android configuration for the app.
 2. Create a `local.properties` file in the project root if it does not already exist.
-3. Add the Google Maps API key:
+3. Add your Google Maps / Places API key. Either property name works - each one falls back to the
+   other, so setting just one is enough:
 
 ```properties
-MAPS_API_KEY=your_google_maps_api_key
+MAPS_API_KEY=your_google_api_key
+PLACES_API_KEY=your_google_api_key
 ```
 
-The app also supports reading `MAPS_API_KEY` from the environment when it is not present in `local.properties`.
+The app also supports reading `MAPS_API_KEY` or `PLACES_API_KEY` from the environment when neither
+is present in `local.properties`.
 
 ## Build
 

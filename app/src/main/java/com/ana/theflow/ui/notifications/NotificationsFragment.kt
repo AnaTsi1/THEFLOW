@@ -15,7 +15,9 @@ import androidx.fragment.app.activityViewModels
 import com.ana.theflow.MainActivity
 import com.ana.theflow.R
 import com.ana.theflow.data.model.notification.InAppNotification
+import com.ana.theflow.data.repository.JobRepository
 import com.ana.theflow.data.repository.NotificationRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.databinding.FragmentNotificationsBinding
 import com.ana.theflow.ui.common.ResponsiveLayout
 import com.bumptech.glide.Glide
@@ -29,6 +31,7 @@ class NotificationsFragment : Fragment() {
     private var _binding: FragmentNotificationsBinding? = null
     private val binding get() = _binding!!
     private val notificationRepository = NotificationRepository()
+    private val jobRepository = JobRepository()
     private val viewModel: NotificationsViewModel by activityViewModels()
     private var notificationsListener: ListenerRegistration? = null
 
@@ -39,7 +42,7 @@ class NotificationsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.notificationsBTNMarkAll.setOnClickListener {
-            notificationRepository.markAllAsRead { error ->
+            notificationRepository.markAllAsRead(account = ActiveAccountHolder.current()) { error ->
                 if (_binding != null) Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
             }
         }
@@ -47,6 +50,16 @@ class NotificationsFragment : Fragment() {
             ResponsiveLayout.constrainToReadableWidth(*Array(root.childCount) { index -> root.getChildAt(index) })
         }
         ResponsiveLayout.ensureTouchTarget(binding.notificationsBTNMarkAll)
+        binding.notificationsSWIPERefresh.setColorSchemeResources(R.color.neon_purple)
+        binding.notificationsSWIPERefresh.setOnRefreshListener {
+            // Notifications already stream live via a snapshot listener, so there's no separate
+            // fetch to trigger - re-attaching forces a fresh round-trip and reassures the user a
+            // pull actually did something, rather than leaving the gesture with no feedback at all.
+            listen()
+            binding.notificationsSWIPERefresh.postDelayed({
+                if (_binding != null) binding.notificationsSWIPERefresh.isRefreshing = false
+            }, 400L)
+        }
         if (viewModel.notifications.isNotEmpty()) renderNotifications(viewModel.notifications)
         listen()
     }
@@ -55,6 +68,7 @@ class NotificationsFragment : Fragment() {
         binding.notificationsProgress.visibility = if (viewModel.notifications.isEmpty()) View.VISIBLE else View.GONE
         notificationsListener?.remove()
         notificationsListener = notificationRepository.listenToNotifications(
+            account = ActiveAccountHolder.current(),
             onUpdate = { notifications ->
                 if (_binding == null) return@listenToNotifications
                 viewModel.notifications = notifications
@@ -104,7 +118,7 @@ class NotificationsFragment : Fragment() {
                 bottomMargin = 10.dp()
             }
             setOnClickListener {
-                notificationRepository.markAsRead(notification.notificationId)
+                notificationRepository.markAsRead(notification.notificationId, account = ActiveAccountHolder.current())
                 openDestination(notification)
             }
         }
@@ -158,14 +172,30 @@ class NotificationsFragment : Fragment() {
         return row
     }
 
+    // Job-application notifications must be checked before the generic actorId fallback below -
+    // every notification sets actorId, so that branch would otherwise always win first and these
+    // would never route to the actual job.
     private fun openDestination(notification: InAppNotification) {
         val activity = requireActivity() as MainActivity
+        val isJobApplicationNotification = notification.type == InAppNotification.Types.JOB_APPLICATION_RECEIVED ||
+            notification.type == InAppNotification.Types.JOB_APPLICATION_UPDATED
         when {
+            // Must be checked before the generic actorId fallback below - actorId is always the
+            // approving admin, so without this case tapping "your studio request was approved"
+            // would confusingly open the admin's own profile instead of the new business account.
+            notification.type == InAppNotification.Types.STUDIO_REQUEST_APPROVED && notification.studioId.isNotBlank() -> {
+                activity.refreshAccountsThenOpenSwitcher()
+            }
+            notification.applicationId.isNotBlank() && isJobApplicationNotification -> {
+                jobRepository.loadApplication(
+                    applicationId = notification.applicationId,
+                    onSuccess = { application -> if (isAdded) activity.openJobDetail(application.jobId) },
+                    onFailure = { if (isAdded) Toast.makeText(requireContext(), "This application is no longer available.", Toast.LENGTH_SHORT).show() }
+                )
+            }
             notification.postId.isNotBlank() -> activity.openPost(notification.postId)
             notification.conversationId.isNotBlank() -> activity.openChat(notification.conversationId)
             notification.actorId.isNotBlank() -> activity.openUserProfile(notification.actorId)
-            notification.eventId.isNotBlank() -> Toast.makeText(requireContext(), "Event details are not available yet.", Toast.LENGTH_SHORT).show()
-            notification.applicationId.isNotBlank() -> Toast.makeText(requireContext(), "Application status updated.", Toast.LENGTH_SHORT).show()
             else -> Toast.makeText(requireContext(), "This item is no longer available.", Toast.LENGTH_SHORT).show()
         }
     }
@@ -183,6 +213,15 @@ class NotificationsFragment : Fragment() {
             InAppNotification.Types.JOB_RECOMMENDED -> "Recommended job"
             InAppNotification.Types.JOB_APPLICATION_RECEIVED -> "Job application"
             InAppNotification.Types.JOB_APPLICATION_UPDATED -> "Application update"
+            InAppNotification.Types.STUDIO_FOLLOW -> "New follower"
+            InAppNotification.Types.STUDIO_MESSAGE -> "Message"
+            InAppNotification.Types.EVENT_REGISTRATION -> "New registration"
+            InAppNotification.Types.STUDIO_POST_COMMENT -> "Comment"
+            InAppNotification.Types.STUDIO_POST_LIKE -> "Like"
+            InAppNotification.Types.PERMISSION_GRANTED -> "Permission granted"
+            InAppNotification.Types.PERMISSION_REVOKED -> "Permission updated"
+            InAppNotification.Types.STUDIO_REQUEST_APPROVED -> "Studio request approved"
+            InAppNotification.Types.STUDIO_REQUEST_REJECTED -> "Studio request rejected"
             else -> "Notification"
         }
     }

@@ -1,3 +1,6 @@
+// Pulls normalized, comparable features out of a Post or DiscoveryItem (style, location,
+// creator, freshness, popularity), plus the standalone math (decay, freshness, proximity,
+// popularity) the ranking strategies use to turn those features into actual scores.
 package com.ana.theflow.data.recommendation
 
 import com.ana.theflow.data.model.discovery.DiscoveryItem
@@ -7,8 +10,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.exp
 import kotlin.math.ln
-import kotlin.math.min
 
+// Normalized, ranking-ready attributes pulled out of one post or discovery item.
 data class RecommendationFeatures(
     val itemId: String = "",
     val itemType: String = "",
@@ -23,19 +26,23 @@ data class RecommendationFeatures(
     val mediaTypeId: String = "",
     val createdAtMillis: Long = 0L,
     val eventStartMillis: Long = 0L,
-    val popularitySignals: PopularitySignals = PopularitySignals(),
-    val hasCoordinates: Boolean = false
+    val popularitySignals: PopularitySignals = PopularitySignals()
 )
 
+// Raw engagement counts we compute an item's popularity score from.
 data class PopularitySignals(
     val likes: Long = 0,
     val comments: Long = 0,
     val saves: Long = 0,
     val registrations: Long = 0,
-    val shares: Long = 0
+    val shares: Long = 0,
+    // Studio/teacher "follows" - basically their version of likes/comments on a post.
+    val follows: Long = 0
 )
 
+// Builds RecommendationFeatures from either a Post or a DiscoveryItem.
 object RecommendationFeatureExtractor {
+    // Pulls ranking features out of a feed post.
     fun fromPost(post: Post): RecommendationFeatures {
         val styleValues = listOf(
             post.activityType,
@@ -70,6 +77,7 @@ object RecommendationFeatureExtractor {
         )
     }
 
+    // Pulls ranking features out of a Discover/Search item - either one of our own studios/activities, or a Google Places result.
     fun fromDiscoveryItem(item: DiscoveryItem): RecommendationFeatures {
         return RecommendationFeatures(
             itemId = item.id,
@@ -83,18 +91,21 @@ object RecommendationFeatureExtractor {
             contentTypeId = RecommendationNormalizer.contentTypeId(item.displayType.ifBlank { item.type }),
             levelId = RecommendationNormalizer.levelId(item.level),
             mediaTypeId = if (item.coverImageUrl.isNotBlank()) "photo" else "",
+            createdAtMillis = item.createdAtMillis,
             eventStartMillis = parseDateMillis(item.dateTimeText.ifBlank { item.time }),
             popularitySignals = PopularitySignals(
-                registrations = item.ratingCount?.toLong() ?: 0L
-            ),
-            hasCoordinates = item.latitude != null && item.longitude != null
+                registrations = item.ratingCount?.toLong() ?: 0L,
+                follows = item.followersCount
+            )
         )
     }
 
+    // Turns a free-text location into a known city id if we can match one, otherwise a best-effort normalized key.
     fun normalizeLocation(value: String): String {
         return CityOptions.normalizeCityId(value) ?: RecommendationNormalizer.id(value).takeIf { it != "unknown" }.orEmpty()
     }
 
+    // Figures out if a post is a photo, video, or nothing - checks the explicit field first, then falls back to looking at the actual attached media.
     private fun mediaType(post: Post): String {
         val explicit = post.mediaType.takeIf { it.isNotBlank() && it != "none" }
         if (explicit != null) return RecommendationNormalizer.contentTypeId(explicit)
@@ -104,6 +115,7 @@ object RecommendationFeatureExtractor {
         return ""
     }
 
+    // Scans free text for mentions of any style we know about - used when a post doesn't have an explicit style field set.
     private fun extractKnownStyles(text: String): List<String> {
         if (text.isBlank()) return emptyList()
         val haystack = text.lowercase()
@@ -112,6 +124,7 @@ object RecommendationFeatureExtractor {
             .map { RecommendationNormalizer.styleId(it) }
     }
 
+    // Tries a few common date formats and returns the first one that parses, or 0 if none of them work.
     fun parseDateMillis(value: String): Long {
         val raw = value.trim()
         if (raw.isBlank()) return 0L
@@ -121,7 +134,10 @@ object RecommendationFeatureExtractor {
     }
 }
 
+// The actual scoring math the ranking strategies share: time decay, freshness, proximity, and popularity.
 object RecommendationScoreMath {
+    // Makes old learned scores matter less than recent ones - decays exponentially over time,
+    // but never drops below 25% of the original so we don't completely forget someone's history.
     fun decayed(score: Double, lastUpdatedMillis: Long, nowMillis: Long = System.currentTimeMillis()): Double {
         if (score == 0.0 || lastUpdatedMillis <= 0L) return score
         val ageDays = ((nowMillis - lastUpdatedMillis).coerceAtLeast(0L)).toDouble() / DAY_MS
@@ -129,15 +145,12 @@ object RecommendationScoreMath {
         return score * factor
     }
 
-    fun confidence(interactionCount: Int): Double {
-        if (interactionCount <= 0) return 0.0
-        return min(1.0, ln(1.0 + interactionCount) / ln(11.0))
-    }
-
+    // Clamps a score so one dimension can't blow past the max and dominate ranking.
     fun capped(score: Double): Double {
         return score.coerceIn(-RecommendationSignalWeights.MAX_DIMENSION_SCORE, RecommendationSignalWeights.MAX_DIMENSION_SCORE)
     }
 
+    // A "how new is this" bonus based on age - the newer it is, the bigger the boost.
     fun freshness(createdAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): Double {
         if (createdAtMillis <= 0L) return 0.0
         val ageDays = ((nowMillis - createdAtMillis).coerceAtLeast(0L)).toDouble() / DAY_MS
@@ -150,6 +163,8 @@ object RecommendationScoreMath {
         }
     }
 
+    // Same idea as freshness() but for upcoming events - "how soon does this start" - and it
+    // hits already-ended events with a huge penalty so they basically never show up.
     fun eventFreshness(eventStartMillis: Long, nowMillis: Long = System.currentTimeMillis()): Double {
         if (eventStartMillis <= 0L) return 0.0
         val daysUntil = (eventStartMillis - nowMillis).toDouble() / DAY_MS
@@ -163,8 +178,28 @@ object RecommendationScoreMath {
         }
     }
 
+    // Turns a real distance into a bonus that fades the farther away something is. We use tiers
+    // instead of a smooth curve so it's easy to explain in the score breakdown - "within 2km" reads
+    // a lot better than a raw decimal number.
+    fun proximity(distanceMeters: Double?): Double {
+        if (distanceMeters == null) return 0.0
+        val km = distanceMeters / 1000.0
+        return when {
+            km <= 2.0 -> 20.0
+            km <= 5.0 -> 16.0
+            km <= 15.0 -> 12.0
+            km <= 30.0 -> 8.0
+            km <= 60.0 -> 4.0
+            km <= 100.0 -> 1.0
+            else -> 0.0
+        }
+    }
+
+    // A popularity bonus from weighted engagement counts, log-scaled so a viral post doesn't just
+    // completely dominate everything else.
     fun popularity(signals: PopularitySignals): Double {
-        val weighted = signals.likes + signals.comments * 2 + signals.saves * 3 + signals.registrations * 4 + signals.shares * 3
+        val weighted = signals.likes + signals.comments * 2 + signals.saves * 3 + signals.registrations * 4 +
+            signals.shares * 3 + signals.follows * 2
         return if (weighted <= 0) 0.0 else ln(1.0 + weighted.toDouble()) * 2.0
     }
 

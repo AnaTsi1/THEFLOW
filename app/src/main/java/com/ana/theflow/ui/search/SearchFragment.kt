@@ -75,11 +75,11 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     private val postRepository = PostRepository()
     private val activityTrackingRepository = ActivityTrackingRepository()
     private val debounceHandler = Handler(Looper.getMainLooper())
+    private val mapDebounceHandler = Handler(Looper.getMainLooper())
     private var googleMap: GoogleMap? = null
     private var lastExternalSearchKey = ""
     private var lastRenderedQuery = ""
     private var mapCameraDirty = false
-    private var mapSearchLocationOverride: Location? = null
     private var suppressQueryWatcher = false
 
     private val locationPermissionLauncher = registerForActivityResult(
@@ -139,6 +139,13 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         binding.searchEDTQuery.setText(viewModel.state.query)
         binding.searchEDTQuery.setSelection(binding.searchEDTQuery.text?.length ?: 0)
         suppressQueryWatcher = false
+        updateClearButtonVisibility()
+    }
+
+    // The clear (X) button only makes sense once there's actually text to clear - showing it
+    // unconditionally makes its purpose unclear (tapping it while empty does nothing).
+    private fun updateClearButtonVisibility() {
+        binding.searchBTNClear.visibility = if (binding.searchEDTQuery.text.isNullOrBlank()) View.INVISIBLE else View.VISIBLE
     }
 
     private fun isSearchDataStale(): Boolean {
@@ -163,12 +170,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             render()
         }
         binding.searchBTNSearchArea.setOnClickListener {
-            mapSearchLocationOverride = googleMap?.cameraPosition?.target?.let { target ->
-                Location("map_camera").apply {
-                    latitude = target.latitude
-                    longitude = target.longitude
-                }
-            }
+            mapDebounceHandler.removeCallbacksAndMessages(null)
             mapCameraDirty = false
             binding.searchBTNSearchArea.visibility = View.GONE
             loadSearchResults(forceExternal = true)
@@ -176,7 +178,6 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         binding.searchBTNCurrentLocation.setOnClickListener { requestLocationIfNeeded() }
         binding.searchBTNClearMarkers.setOnClickListener {
             viewModel.state.filters = SearchFilters()
-            mapSearchLocationOverride = null
             mapCameraDirty = false
             setupMapChips()
             loadSearchResults(forceExternal = true)
@@ -195,6 +196,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
             override fun afterTextChanged(s: Editable?) {
+                updateClearButtonVisibility()
                 if (suppressQueryWatcher) return
                 viewModel.state.query = s?.toString().orEmpty()
                 scheduleSearch()
@@ -210,7 +212,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
                 if (category == SearchCategory.PEOPLE) {
                     viewModel.state.viewMode = SearchViewMode.LIST
                     binding.searchBTNSearchArea.visibility = View.GONE
-                    binding.searchLAYMarkerPreview.visibility = View.GONE
+                    setMarkerPreviewVisible(false)
                 }
                 setupCategoryChips()
                 loadSearchResults(forceExternal = category == SearchCategory.STUDIOS || category == SearchCategory.ALL)
@@ -277,6 +279,22 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         debounceHandler.postDelayed({ loadSearchResults(forceExternal = false) }, SEARCH_DEBOUNCE_MS)
     }
 
+    // Lets panning/zooming the map refresh results on its own, like Google Maps - the user
+    // shouldn't have to drag then tap "Search this area" just to see what's around a new view.
+    // Debounced so a drag gesture doesn't fire a search per frame; "Search this area" still exists
+    // for an instant manual refresh.
+    private fun scheduleMapAreaRefresh() {
+        if (viewModel.state.viewMode != SearchViewMode.MAP) return
+        if (!mapCameraDirty) return
+        mapDebounceHandler.removeCallbacksAndMessages(null)
+        mapDebounceHandler.postDelayed({
+            if (_binding == null) return@postDelayed
+            mapCameraDirty = false
+            binding.searchBTNSearchArea.visibility = View.GONE
+            loadSearchResults(forceExternal = true)
+        }, MAP_AREA_DEBOUNCE_MS)
+    }
+
     private fun loadSearchResults(forceExternal: Boolean, keepContentVisible: Boolean = false) {
         if (_binding == null) return
         val state = viewModel.state
@@ -339,7 +357,8 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         }
         val filterCity = CityOptions.normalizeOptionalCity(manualCity).orEmpty()
         val locationKey = searchLocation?.let { "${"%.3f".format(it.latitude)},${"%.3f".format(it.longitude)}" }.orEmpty()
-        val key = "${query.trim()}|${filterCity}|${searchCity}|${viewModel.state.filters.selectedStyles().joinToString(",")}|$locationKey"
+        val radiusMeters = currentMapSearchRadiusMeters()
+        val key = "${query.trim()}|${filterCity}|${searchCity}|${viewModel.state.filters.selectedStyles().joinToString(",")}|$locationKey|${radiusMeters?.toInt()}"
         if (key == lastExternalSearchKey) return
         lastExternalSearchKey = key
         DiscoveryRepository.loadExternalStudios(
@@ -347,6 +366,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             query = listOf(query, viewModel.state.filters.primaryStyle()).filter { it.isNotBlank() }.joinToString(" "),
             city = searchCity,
             location = searchLocation,
+            radiusMeters = radiusMeters,
             usePreferredCityFallback = false,
             cacheKey = "search:${viewModel.state.viewMode}:$key",
             onSuccess = {
@@ -423,7 +443,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         binding.searchLBLGoogleAttribution.visibility =
             if (state.results.any { it.source == DiscoveryItem.SOURCE_GOOGLE }) View.VISIBLE else View.GONE
         binding.searchLAYResults.removeAllViews()
-        binding.searchLAYMarkerPreview.visibility = View.GONE
+        setMarkerPreviewVisible(false)
         if (state.viewMode == SearchViewMode.LIST) renderList()
         if (state.selectedCategory == SearchCategory.PEOPLE) {
             googleMap?.clear()
@@ -549,7 +569,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
                 placeholder.visibility = View.GONE
                 Glide.with(context).load(item.coverImageUrl).centerCrop().into(image)
             }
-            item.source == DiscoveryItem.SOURCE_GOOGLE -> GooglePlacePhotoLoader.load(context, item.googlePlaceId, image, TextView(context))
+            item.source == DiscoveryItem.SOURCE_GOOGLE -> GooglePlacePhotoLoader.load(context, item.googlePlaceId, image, TextView(context), onPhotoLoaded = { placeholder.visibility = View.GONE })
         }
         card.addView(imageWrap)
         card.addView(LinearLayout(context).apply {
@@ -821,10 +841,20 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             }
             setOnCameraIdleListener {
                 cameraPosition?.let { camera ->
-                    viewModel.state.mapLatitude = camera.target.latitude
-                    viewModel.state.mapLongitude = camera.target.longitude
-                    viewModel.state.mapZoom = camera.zoom
+                    // The SDK can fire an idle callback for its own uninitialized default camera
+                    // (target 0,0) before our own moveCamera/animateCamera call in
+                    // restoreMapCamera()/requestInitialLocation() has visually settled. Persisting
+                    // that raw (0,0) here - and only here, since this is the one place that writes
+                    // these fields - was the actual root cause of the map reopening "in the
+                    // ocean": once stored, restoreMapCamera() would treat it as a real remembered
+                    // position on every future open of this screen for the rest of the app session.
+                    if (!camera.target.isNullIsland()) {
+                        viewModel.state.mapLatitude = camera.target.latitude
+                        viewModel.state.mapLongitude = camera.target.longitude
+                        viewModel.state.mapZoom = camera.zoom
+                    }
                 }
+                scheduleMapAreaRefresh()
             }
             setOnMarkerClickListener { marker ->
                 (marker.tag as? DiscoveryItem)?.let { item ->
@@ -844,10 +874,22 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     private fun restoreMapCamera() {
         val lat = viewModel.state.mapLatitude ?: return
         val lng = viewModel.state.mapLongitude ?: return
+        // Defensive second guard against the same (0,0) poisoning the idle-listener fix above
+        // prevents going forward - a state instance already poisoned before this fix was applied
+        // (or by any other future writer of these fields) should never be trusted as a real
+        // remembered position either. Falls through to the normal device-location/fallback
+        // centering in onMapReady() instead of restoring anything.
+        if (LatLng(lat, lng).isNullIsland()) return
         val zoom = viewModel.state.mapZoom ?: DEFAULT_MAP_ZOOM
         googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), zoom))
         viewModel.state.hasCenteredInitialMap = true
     }
+
+    // (0,0) - "Null Island", off the coast of West Africa - is never a legitimate camera target
+    // for this app; treating it as one is the exact "uninitialized coordinate defaults to (0,0)"
+    // failure pattern this fix closes off at both the write side (setOnCameraIdleListener above)
+    // and the read side (restoreMapCamera above).
+    private fun LatLng.isNullIsland(): Boolean = latitude == 0.0 && longitude == 0.0
 
     private fun renderMapMarkers(items: List<DiscoveryItem>) {
         val map = googleMap ?: return
@@ -863,7 +905,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
                 viewModel.state.hasCenteredInitialMap = true
             }
             if (viewModel.state.viewMode == SearchViewMode.MAP && !viewModel.state.isLoading) {
-                binding.searchLAYMarkerPreview.visibility = View.GONE
+                setMarkerPreviewVisible(false)
             }
             return
         }
@@ -891,9 +933,17 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
+    // The marker preview card and the Clear Filters button share the same bottom-right corner of
+    // the map - the full-width preview card renders on top of and hides the button whenever both
+    // are visible, so only one of them is ever shown at a time.
+    private fun setMarkerPreviewVisible(visible: Boolean) {
+        binding.searchLAYMarkerPreview.visibility = if (visible) View.VISIBLE else View.GONE
+        binding.searchBTNClearMarkers.visibility = if (visible) View.GONE else View.VISIBLE
+    }
+
     private fun renderMarkerPreview(item: DiscoveryItem) {
         binding.searchLAYMarkerPreview.removeAllViews()
-        binding.searchLAYMarkerPreview.visibility = View.VISIBLE
+        setMarkerPreviewVisible(true)
         binding.searchLAYMarkerPreview.addView(TextView(requireContext()).apply {
             text = item.title
             setTextColor(requireContext().getColor(R.color.discover_ink))
@@ -1157,7 +1207,6 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             "Location" -> {
                 filters.location = ""
                 if (!filters.locations.add(value)) filters.locations.remove(value)
-                mapSearchLocationOverride = null
             }
             "Date" -> {
                 filters.date = ""
@@ -1197,7 +1246,6 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
             "Location" -> {
                 filters.locations.clear()
                 filters.location = normalized
-                if (normalized.isNotBlank()) mapSearchLocationOverride = null
             }
             "Distance" -> filters.distance = normalized
             "Date" -> {
@@ -1398,7 +1446,7 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         surface = if (viewModel.state.viewMode == SearchViewMode.MAP) RecommendationSurface.MAP else RecommendationSurface.SEARCH,
         manualSelectedLocation = CityOptions.normalizeOptionalCity(manualCity).orEmpty(),
         currentDeviceLocation = currentLocationIfAllowed()?.toGeoPoint(),
-        mapCameraLocation = mapSearchLocationOverride?.toGeoPoint(),
+        mapCameraLocation = currentMapCameraLocation(),
         selectedFilters = mapOf(
             "query" to viewModel.state.query,
             "location" to manualCity,
@@ -1407,6 +1455,27 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         ).filterValues { it.isNotBlank() },
         profileOverride = viewModel.state.recommendationProfile
     )
+
+    // The map view's whole point is "search what's on screen" - once the map is showing, its own
+    // camera target is the right search center, not a saved/default city the user may be nowhere
+    // near. Falls back to the usual manual/device/preferred/profile chain in list mode.
+    private fun currentMapCameraLocation(): GeoPoint? {
+        if (viewModel.state.viewMode != SearchViewMode.MAP) return null
+        return googleMap?.cameraPosition?.target?.let { GeoPoint(it.latitude, it.longitude) }
+    }
+
+    // Scales the Google Places location-bias radius to what's actually visible instead of one
+    // fixed distance for every zoom level - zoomed out over all of Israel should bias across a
+    // wide area, zoomed into one neighborhood should bias tightly.
+    private fun currentMapSearchRadiusMeters(): Double? {
+        if (viewModel.state.viewMode != SearchViewMode.MAP) return null
+        val map = googleMap ?: return null
+        val bounds = runCatching { map.projection.visibleRegion.latLngBounds }.getOrNull() ?: return null
+        val center = bounds.center
+        val result = FloatArray(1)
+        Location.distanceBetween(center.latitude, center.longitude, bounds.northeast.latitude, bounds.northeast.longitude, result)
+        return result[0].toDouble().coerceIn(MIN_MAP_SEARCH_RADIUS_METERS, MAX_MAP_SEARCH_RADIUS_METERS)
+    }
 
     private fun Location.toGeoPoint(): GeoPoint = GeoPoint(latitude, longitude)
 
@@ -1442,15 +1511,12 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
         ).distinct().joinToString(" / ")
     }
 
+    // DiscoveryRepository.explanationFor() already returns one concrete, plain-language reason
+    // (e.g. "Because you like Hip Hop") - this just takes the first line defensively, no further
+    // rewriting needed.
     private fun String.naturalReason(): String {
         val first = lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
-        return when {
-            first.startsWith("Popular near", ignoreCase = true) -> first.replace("Popular near", "Popular near you")
-            first.startsWith("Based on", ignoreCase = true) -> "Matches your dance profile"
-            first.contains("level", ignoreCase = true) -> "Recommended for your level"
-            first.isBlank() -> "Recommended by THE FLOW"
-            else -> first
-        }
+        return first.ifBlank { "Recommended by THE FLOW" }
     }
 
     private fun markerHue(item: DiscoveryItem): Float {
@@ -1479,9 +1545,12 @@ class SearchFragment : Fragment(), OnMapReadyCallback {
     companion object {
         private const val ARG_MAP_MODE = "ARG_MAP_MODE"
         private const val SEARCH_DEBOUNCE_MS = 350L
+        private const val MAP_AREA_DEBOUNCE_MS = 700L
         private const val SEARCH_STALE_AFTER_MS = 5 * 60 * 1000L
         private val DEFAULT_MAP_CENTER = LatLng(32.0853, 34.7818)
         private const val DEFAULT_MAP_ZOOM = 11f
+        private const val MIN_MAP_SEARCH_RADIUS_METERS = 500.0
+        private const val MAX_MAP_SEARCH_RADIUS_METERS = 50000.0
 
         fun newInstance(mapMode: Boolean = false): SearchFragment {
             return SearchFragment().apply {

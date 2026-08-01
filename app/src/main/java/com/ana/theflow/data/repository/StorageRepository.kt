@@ -1,3 +1,5 @@
+// Handles uploading files to Firebase Storage (profile photos, covers, post media, verification
+// documents) and saving the resulting download URL onto the right Firestore document.
 package com.ana.theflow.data.repository
 
 import android.net.Uri
@@ -178,43 +180,34 @@ class StorageRepository {
         )
     }
 
-    // Uploads a studio application document and saves its metadata.
-    fun uploadStudioApplicationDocument(
+    // Uploads a supporting document (certificate, credential) for a professional verification
+    // application and appends its URL - the application document already exists by this point
+    // (submitApplication runs first), so this is an append, not a create.
+    fun uploadVerificationDocument(
         applicationId: String,
-        documentUri: Uri,
+        fileUri: Uri,
         fileName: String,
         onLoading: (Boolean) -> Unit = {},
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
         if (applicationId.isBlank()) {
-            onFailure("Missing studio application id")
+            onFailure("Missing application id")
             return
         }
 
         val cleanFileName = sanitizeFileName(fileName)
-        val path = "studioApplications/$applicationId/documents/$cleanFileName"
         uploadAndSaveUrl(
-            path = path,
-            fileUri = documentUri,
+            path = "professionalApplications/$applicationId/documents/$cleanFileName",
+            fileUri = fileUri,
             onLoading = onLoading,
             saveUrl = { url, success, failure ->
-                val documentMetadata = mapOf(
-                    "fileName" to cleanFileName,
-                    "url" to url,
-                    "storagePath" to path,
-                    "uploadedAt" to System.currentTimeMillis()
-                )
-                val updates = mapOf(
-                    "documents" to FieldValue.arrayUnion(documentMetadata),
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-                db.collection(Constants.Collections.STUDIO_APPLICATIONS)
+                db.collection(Constants.Collections.PROFESSIONAL_APPLICATIONS)
                     .document(applicationId)
-                    .set(updates, SetOptions.merge())
+                    .update("documents", FieldValue.arrayUnion(url))
                     .addOnSuccessListener { success() }
                     .addOnFailureListener { error ->
-                        failure(error.message ?: "Failed to save studio document URL")
+                        failure(error.message ?: "Failed to save document URL")
                     }
             },
             onSuccess = onSuccess,

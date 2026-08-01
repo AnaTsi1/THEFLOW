@@ -42,6 +42,16 @@
     <string name="discover_view_event">View Event</string>
     <string name="discover_view_studio">View Studio</string>
     <string name="discover_view_profile">View Profile</string>
+    <string name="discover_register">Register</string>
+    <string name="discover_follow">Follow</string>
+    <string name="discover_section_recommended_title">Recommended For You</string>
+    <string name="discover_section_recommended_subtitle">Personalized picks across studios, events, and dancers</string>
+    <string name="discover_section_studios_title">Studios Near You</string>
+    <string name="discover_section_studios_subtitle">Sorted by distance from you</string>
+    <string name="discover_section_events_title">Events This Week</string>
+    <string name="discover_section_events_subtitle">Classes, workshops, and events starting soon</string>
+    <string name="discover_section_teachers_title">Teachers You May Like</string>
+    <string name="discover_section_teachers_subtitle">Verified instructors matched to your styles</string>
     <string name="discover_view_google_maps">View on Google Maps</string>
     <string name="discover_save">Save</string>
     <string name="discover_save_item">Save item</string>
@@ -66,6 +76,7 @@
     <string name="detail_open_website">Website</string>
     <string name="detail_call_studio">Call</string>
     <string name="detail_navigate">Navigate</string>
+    <string name="detail_more_actions">More actions</string>
     <string name="detail_report">Report</string>
     <string name="detail_external_info_missing">This detail is currently available from Google Places.</string>
     <string name="detail_google_attribution">Studio information provided by Google. THE FLOW does not permanently store Google business details.</string>
@@ -84,6 +95,7 @@
     <string name="home_menu_settings">Settings</string>
     <string name="home_switch_account">Switch account</string>
     <string name="home_posting_as_personal">Personal</string>
+    <string name="home_account_switch_indicator">⌄</string>
     <string name="home_tab_for_you">FOR YOU</string>
     <string name="home_tab_following">FOLLOWING</string>
     <string name="home_empty_for_you">Your feed is quiet right now. Create a post from your profile or check back soon.</string>

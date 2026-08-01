@@ -9,8 +9,10 @@ import android.widget.Switch
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.ana.theflow.R
+import com.ana.theflow.data.model.account.ActiveAccount
 import com.ana.theflow.data.model.settings.NotificationSettings
 import com.ana.theflow.data.repository.SettingsRepository
+import com.ana.theflow.data.session.ActiveAccountHolder
 import com.ana.theflow.ui.common.UiText
 
 class NotificationSettingsFragment : Fragment() {
@@ -23,14 +25,18 @@ class NotificationSettingsFragment : Fragment() {
         val scroll = SettingsUi.contentScroll(requireContext())
         val content = SettingsUi.contentColumn(requireContext())
         content.addView(SettingsUi.message(requireContext(), "Notification controls save individually without leaving this screen."))
+        val isStudioActive = ActiveAccountHolder.current() is ActiveAccount.StudioAccount
         val all = switchRow("Enable notifications")
         val likes = switchRow("Likes and comments")
         val followers = switchRow("New followers")
         val messages = switchRow("Messages")
         val events = switchRow("Events and classes")
-        val recommendations = switchRow("Recommendations")
-        val verification = switchRow("Professional-verification updates")
-        listOf(all, likes, followers, messages, events, recommendations, verification).forEach(content::addView)
+        // Recommendations personalize to a dancer's own taste, and professional-verification
+        // updates apply to the person, not the business - fully absent (not disabled) while a
+        // studio account is active, same pattern as hiding "Feed and Discovery" from Settings.
+        val recommendations = if (isStudioActive) null else switchRow("Recommendations")
+        val verification = if (isStudioActive) null else switchRow("Professional-verification updates")
+        listOfNotNull(all, likes, followers, messages, events, recommendations, verification).forEach(content::addView)
 
         fun save() {
             if (binding) return
@@ -40,9 +46,12 @@ class NotificationSettingsFragment : Fragment() {
                 comments = likes.isChecked,
                 newFollowers = followers.isChecked,
                 privateMessages = messages.isChecked,
-                eventRecommendations = events.isChecked || recommendations.isChecked,
+                // When hidden, fall back to whatever was already loaded instead of silently
+                // resetting these to their default - the preference still exists for the
+                // person, this screen just isn't the place to change it while acting as a studio.
+                eventRecommendations = events.isChecked || (recommendations?.isChecked ?: current.eventRecommendations),
                 registeredEventUpdates = events.isChecked,
-                professionalApplicationUpdates = verification.isChecked
+                professionalApplicationUpdates = verification?.isChecked ?: current.professionalApplicationUpdates
             )
             repository.saveNotificationSettings(
                 settings = current,
@@ -51,7 +60,7 @@ class NotificationSettingsFragment : Fragment() {
             )
         }
 
-        listOf(all, likes, followers, messages, events, recommendations, verification).forEach {
+        listOfNotNull(all, likes, followers, messages, events, recommendations, verification).forEach {
             it.setOnCheckedChangeListener { _, _ -> save() }
         }
         repository.loadSettings(
@@ -64,8 +73,8 @@ class NotificationSettingsFragment : Fragment() {
                 followers.isChecked = notifications.newFollowers
                 messages.isChecked = notifications.privateMessages
                 events.isChecked = notifications.eventRecommendations || notifications.registeredEventUpdates
-                recommendations.isChecked = notifications.eventRecommendations
-                verification.isChecked = notifications.professionalApplicationUpdates
+                recommendations?.isChecked = notifications.eventRecommendations
+                verification?.isChecked = notifications.professionalApplicationUpdates
                 binding = false
             },
             onFailure = { error -> if (isAdded) Toast.makeText(requireContext(), UiText.friendlyError(error, "We could not load notification settings."), Toast.LENGTH_SHORT).show() }

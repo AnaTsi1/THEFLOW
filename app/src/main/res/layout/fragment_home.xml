@@ -72,6 +72,15 @@
                 android:textColor="@color/flow_text_secondary"
                 android:textSize="12sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="@string/home_account_switch_indicator"
+                android:textColor="@color/flow_text_secondary"
+                android:textSize="10sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -207,7 +216,7 @@
         <LinearLayout
             android:id="@+id/home_MENU_switchAccount"
             style="@style/Flow.Drawer.Row">
-            <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_profile_24" />
+            <ImageView style="@style/Flow.Drawer.Icon" android:src="@drawable/ic_switch_24" />
             <TextView
                 android:id="@+id/home_LBL_menuAccount"
                 style="@style/Flow.Drawer.Label"

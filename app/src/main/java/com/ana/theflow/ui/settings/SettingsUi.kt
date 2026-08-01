@@ -5,9 +5,11 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.annotation.DrawableRes
 import androidx.fragment.app.Fragment
 import com.ana.theflow.R
 import com.ana.theflow.ui.common.ResponsiveLayout
@@ -58,6 +60,7 @@ object SettingsUi {
         value: String = "",
         enabled: Boolean = true,
         destructive: Boolean = false,
+        @DrawableRes iconRes: Int? = null,
         onClick: (() -> Unit)? = null
     ): View {
         return LinearLayout(context).apply {
@@ -72,6 +75,15 @@ object SettingsUi {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = 10.dp() }
+            if (iconRes != null) {
+                addView(ImageView(context).apply {
+                    setImageResource(iconRes)
+                    setColorFilter(context.getColor(if (destructive) R.color.flow_error else R.color.flow_brand))
+                    layoutParams = LinearLayout.LayoutParams(22.dp(), 22.dp()).apply {
+                        rightMargin = 14.dp()
+                    }
+                })
+            }
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
